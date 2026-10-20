@@ -20,7 +20,8 @@ echo "==> tests"
 "$BUILD/obj/tests"
 
 echo "==> UI checks"
-"${SWIFTC[@]}" "${CORE[@]}" Sources/DropSorter/ShelfPanel.swift Sources/DropSorter/Glow.swift Tests/UI/main.swift -o "$BUILD/obj/uitests"
+"${SWIFTC[@]}" "${CORE[@]}" Sources/DropSorter/ShelfPanel.swift Sources/DropSorter/Glow.swift Sources/DropSorter/SettingsWindow.swift \
+  Sources/DropSorter/DropAppManager.swift Sources/DropMover/IconRenderer.swift Tests/UI/main.swift -o "$BUILD/obj/uitests"
 "$BUILD/obj/uitests"
 
 echo "==> dropsorter (command line)"
