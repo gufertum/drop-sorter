@@ -1,7 +1,7 @@
 import Foundation
 
 // Tries the matcher against a real folder tree, without the app.
-// Usage: suggest [-c config.json] [-q "filter text"] <base folder> <name>...   (a name ending in "/" is a folder)
+// Usage: suggest [-c config.yaml|config.json] [-q "filter text"] <base folder> <name>...   (a name ending in "/" is a folder)
 func fail(_ msg: String) -> Never {
     FileHandle.standardError.write(Data("suggest: \(msg)\n".utf8))
     exit(2)
@@ -16,15 +16,13 @@ while let flag = args.first, flag.hasPrefix("-") {
     args.removeFirst()
     switch flag {
     case "-c":
-        do {
-            config = try JSONStore(url: URL(fileURLWithPath: value), defaultValue: SorterConfig()).load()
-            try config.validate()
-        } catch { fail("config \(value): \(error)") }
+        do { config = try SorterConfigStore.read(URL(fileURLWithPath: value)) }
+        catch { fail(error.localizedDescription) }
     case "-q": query = value
     default: fail("unknown option \(flag)")
     }
 }
-guard args.count >= 2 else { fail("usage: suggest [-c config.json] [-q filter] <base folder> <name>...") }
+guard args.count >= 2 else { fail("usage: suggest [-c config.yaml] [-q filter] <base folder> <name>...") }
 
 Mover.logPrefix = "suggest"
 let folders: [FolderEntry]

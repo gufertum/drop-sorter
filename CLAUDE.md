@@ -10,7 +10,8 @@ Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 ## Layout
 
 - `Sources/Core/` Foundation only, shared by both apps and the tests: Renamer, Mover, Tokenizer,
-  Matcher, FolderIndex, History, JSONStore, SorterConfig, DropMoverConfig.
+  Matcher, FolderIndex, History, JSONStore, SorterConfig, SorterConfigStore, YAML, DropMoverConfig,
+  ShelfVisibility, ChooserModel, Sorter.
 - `Sources/DropMover/` Drop Mover app (AppKit). `Resources/DropMover/Info.plist`.
 - `Sources/DropSorter/` Drop Sorter app (phase 2, not there yet).
 - `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
@@ -45,6 +46,10 @@ scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured Drop M
   A folder is only preselected when the match is clear; a blind Return must never misfile.
 - `Mover` never overwrites (`-2`, `-3` suffixes), moves item by item and reports per-item failures;
   `Mover.undo` reverses a result.
+- **Config is YAML first, JSON as fallback** (`SorterConfigStore`); the YAML subset parser in
+  `YAML.swift` is ours (no dependencies), strict, and converts to JSON so all `Codable` types serve
+  both formats. History and Drop Mover's per-copy config stay JSON (machine-written).
+  Keep `SorterConfigStore.keyOrder` and the README config example in sync with `SorterConfig`.
 - Fail loudly: corrupt config or history files throw instead of being reset; `SorterConfig.validate()`
   at startup and before saving; errors are logged via `NSLog` with the prefix in `Mover.logPrefix`.
 - Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
