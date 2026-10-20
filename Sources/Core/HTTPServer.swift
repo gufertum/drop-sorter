@@ -32,7 +32,7 @@ final class HTTPServer {
             switch state {
             case .ready: self?.onState?("ready")
             case .failed(let e):
-                NSLog("%@: REST API on 127.0.0.1:%d failed: %@", Mover.logPrefix, Int(self?.port ?? 0), e.localizedDescription)
+                Log.info(String(format: "REST API on 127.0.0.1:%ld failed: %@", Int(self?.port ?? 0), e.localizedDescription))
                 self?.onState?("failed: \(e.localizedDescription)")
             default: break
             }

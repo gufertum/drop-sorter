@@ -130,7 +130,7 @@ enum DropAppFactory {
             throw error
         }
         if register { registerWithLaunchServices(url) }
-        NSLog("%@: created drop app '%@' -> '%@'", Mover.logPrefix, url.path, target)
+        Log.info(String(format: "created drop app '%@' -> '%@'", url.path, target))
     }
 
     /// Replaces the app at `url` with the template, keeping its config.json. Turns a legacy copy into
@@ -166,7 +166,7 @@ enum DropAppFactory {
             throw error
         }
         if register { registerWithLaunchServices(url) }
-        NSLog("%@: %@ drop app '%@'", Mover.logPrefix, info.state == .legacy ? "adopted" : "updated", url.path)
+        Log.info(String(format: "%@ drop app '%@'", info.state == .legacy ? "adopted" : "updated", url.path))
         return retired
     }
 
@@ -180,6 +180,6 @@ enum DropAppFactory {
     /// So Finder and "Open With" know the new bundle (and its new id) right away.
     static func registerWithLaunchServices(_ url: URL) {
         let status = LSRegisterURL(url as CFURL, true)
-        if status != noErr { NSLog("%@: LSRegisterURL failed for '%@': %d", Mover.logPrefix, url.path, status) }
+        if status != noErr { Log.info(String(format: "LSRegisterURL failed for '%@': %d", url.path, status)) }
     }
 }

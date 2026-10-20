@@ -34,8 +34,11 @@ enum MoveError: LocalizedError {
 /// Moves dropped files and folders. Never overwrites, moves item by item and collects failures,
 /// so one bad item does not stop the rest. Used by Drop Mover and Drop Sorter.
 enum Mover {
-    /// Prefix for log lines, set by each app ("DropMover", "DropSorter").
-    static var logPrefix = "DropMover"
+    /// Prefix for log lines, set by each app ("DropMover", "DropSorter"). Same as `Log.prefix`.
+    static var logPrefix: String {
+        get { Log.prefix }
+        set { Log.prefix = newValue }
+    }
 
     /// Moves (or copies) each item into `target`. With a `pattern`, items are renamed with it; without,
     /// they keep their name. Folders go with their content; only the top-level folder is renamed.
@@ -59,11 +62,11 @@ enum Mover {
                 }
                 result.moves.append(Move(source: src, destination: dest))
             } catch {
-                NSLog("%@: failed to %@ '%@' to '%@': %@", logPrefix, mode.rawValue, src.path, target.path, error.localizedDescription)
+                Log.info(String(format: "failed to %@ '%@' to '%@': %@", mode.rawValue, src.path, target.path, error.localizedDescription))
                 result.failures.append((name, error.localizedDescription))
             }
         }
-        NSLog("%@: %@ %d item(s) to '%@', %d failure(s)", logPrefix, mode.pastTense.lowercased(), result.moves.count, target.path, result.failures.count)
+        Log.info(String(format: "%@ %ld item(s) to '%@', %ld failure(s)", mode.pastTense.lowercased(), result.moves.count, target.path, result.failures.count))
         return result
     }
 
@@ -79,7 +82,7 @@ enum Mover {
                     let gone = try removeCopy(m.destination)
                     result.moves.append(Move(source: m.destination, destination: gone ?? m.destination))
                 } catch {
-                    NSLog("%@: undo failed for copy '%@': %@", logPrefix, m.destination.path, error.localizedDescription)
+                    Log.info(String(format: "undo failed for copy '%@': %@", m.destination.path, error.localizedDescription))
                     result.failures.append((m.destination.lastPathComponent, error.localizedDescription))
                 }
             }
@@ -95,7 +98,7 @@ enum Mover {
                 try fm.moveItem(at: m.destination, to: back)
                 result.moves.append(Move(source: m.destination, destination: back))
             } catch {
-                NSLog("%@: undo failed for '%@': %@", logPrefix, m.destination.path, error.localizedDescription)
+                Log.info(String(format: "undo failed for '%@': %@", m.destination.path, error.localizedDescription))
                 result.failures.append((m.destination.lastPathComponent, error.localizedDescription))
             }
         }

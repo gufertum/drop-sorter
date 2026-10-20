@@ -2,13 +2,12 @@ import Foundation
 
 // dropsorter: see CLI.swift for the commands. Inside "Drop Sorter.app" (Contents/Helpers) it finds the
 // Drop Mover template next to it; a symlink in ~/.local/bin resolves to the bundle.
-Mover.logPrefix = "dropsorter"
+Log.prefix = "dropsorter"
 
-// The engine logs every move with NSLog, which goes to stderr. Keep our own messages on the real
-// stderr and drop the NSLog lines unless DROPSORTER_LOG is set.
-let messages = FileHandle(fileDescriptor: dup(STDERR_FILENO), closeOnDealloc: true)
+// The engine logs every move; in a terminal that is noise. DROPSORTER_LOG=1 shows it on stderr.
+let messages = FileHandle.standardError
 if ProcessInfo.processInfo.environment["DROPSORTER_LOG"] == nil {
-    freopen("/dev/null", "a", stderr)
+    Log.sink = { _ in }
 }
 
 let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
@@ -21,7 +20,7 @@ let service = SortService(template: template)
 
 // MCP over stdio: one JSON-RPC message per line in, one per line out, flushed at once.
 if CommandLine.arguments.dropFirst().first == "mcp" {
-    Mover.logPrefix = "dropsorter-mcp"
+    Log.prefix = "dropsorter-mcp"
     let server = MCPServer(service: service)
     while let line = readLine(strippingNewline: true) {
         guard !line.trimmingCharacters(in: .whitespaces).isEmpty, let reply = server.handle(line) else { continue }
