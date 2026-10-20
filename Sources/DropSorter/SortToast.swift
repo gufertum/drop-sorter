@@ -64,19 +64,23 @@ final class SortToast: NSObject {
             stack.widthAnchor.constraint(equalToConstant: width),
             titleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: width - 32),
         ])
-        let size = stack.fittingSize
+        let glow = GlowContainer(content: content, cornerRadius: 12)
+        if isError { glow.color = .systemRed }
+        let size = glow.fittingSize
 
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false  // the glow replaces the window shadow
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = content
+        panel.contentView = glow
         if let screen = NSScreen.main?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: screen.maxX - size.width - 16, y: screen.maxY - size.height - 16))
+            // The visible toast keeps 16 pt from the top right corner; the glow margin lies outside.
+            let pad = 16 - glow.margin
+            panel.setFrameOrigin(NSPoint(x: screen.maxX - size.width - pad, y: screen.maxY - size.height - pad))
         }
         panel.orderFrontRegardless()
         self.panel = panel

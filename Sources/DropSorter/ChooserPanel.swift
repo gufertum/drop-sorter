@@ -23,7 +23,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         level = .floating
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false  // the glow replaces the window shadow
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         delegate = self
@@ -112,7 +112,10 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
             rename.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -32),
             scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
         ])
-        contentView = content
+        let glow = GlowContainer(content: content, cornerRadius: 14)
+        glow.setGlow(0.8)
+        contentView = glow
+        setContentSize(NSSize(width: 600 + 2 * glow.margin, height: 440 + 2 * glow.margin))
     }
 
     private func setVerdict(_ override: String? = nil) {
