@@ -99,8 +99,9 @@ enum Matcher {
     }
 
     /// Orders candidates for the chooser. Empty query: by suggestion score, favorites first on ties.
-    /// Otherwise every space-separated term must match the path (substring or subsequence); folders
-    /// matching at a segment start rank first, the suggestion score breaks ties.
+    /// Otherwise every space-separated term must appear in the path as one piece (no scattered letters:
+    /// "embr" finds "Cembra", not every path with an e, m, b and r); folders matching at the start of a
+    /// word rank first, the suggestion score breaks ties.
     static func rank(_ candidates: [Candidate], query: String, favorites: Set<String> = []) -> [Candidate] {
         let terms = Tokenizer.fold(query).split(whereSeparator: \.isWhitespace).map(String.init)
         if terms.isEmpty {
@@ -117,26 +118,23 @@ enum Matcher {
             .map(\.0)
     }
 
-    /// 3 per term found at a segment start, 2 anywhere else as substring, 1 as subsequence; nil if a term is missing.
+    /// Per term: 3 when it starts a word (after "/", space, "-", "_", "." or at the start), else 2 when it
+    /// appears inside a word; nil when any term is missing.
     static func filterScore(_ normalized: String, _ terms: [String]) -> Int? {
         let hay = Array(normalized)
         var total = 0
         for term in terms {
-            let needle = Array(term)
-            if let at = firstIndex(of: needle, in: hay) {
-                total += (at == 0 || hay[at - 1] == "/" || hay[at - 1] == " ") ? 3 : 2
-                continue
-            }
-            var j = 0
-            for c in hay where j < needle.count && c == needle[j] { j += 1 }
-            guard j == needle.count else { return nil }
-            total += 1
+            let starts = occurrences(of: Array(term), in: hay)
+            guard !starts.isEmpty else { return nil }
+            total += starts.contains { $0 == 0 || wordSeparators.contains(hay[$0 - 1]) } ? 3 : 2
         }
         return total
     }
 
-    private static func firstIndex(of needle: [Character], in hay: [Character]) -> Int? {
-        guard !needle.isEmpty, needle.count <= hay.count else { return needle.isEmpty ? 0 : nil }
-        return (0...(hay.count - needle.count)).first { i in hay[i..<(i + needle.count)].elementsEqual(needle) }
+    private static let wordSeparators: Set<Character> = ["/", " ", "-", "_", "."]
+
+    private static func occurrences(of needle: [Character], in hay: [Character]) -> [Int] {
+        guard !needle.isEmpty, needle.count <= hay.count else { return [] }
+        return (0...(hay.count - needle.count)).filter { i in hay[i..<(i + needle.count)].elementsEqual(needle) }
     }
 }

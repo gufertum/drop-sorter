@@ -88,6 +88,14 @@ func matcherTests() throws {
 
     eq(Matcher.filterScore("30 areas/finance/invoices/", ["inv"]), 3)
     eq(Matcher.filterScore("30 areas/finance/invoices/", ["voi"]), 2)
-    eq(Matcher.filterScore("30 areas/finance/invoices/", ["fnc"]), 1)
+    // No scattered letters: only whole pieces match.
+    eq(Matcher.filterScore("30 areas/finance/invoices/", ["fnc"]), nil)
+    // A later occurrence at a word start counts as a word start ("inv" in "x-invoices").
+    eq(Matcher.filterScore("rinv/x-invoices/", ["inv"]), 3)
+    let banks = ["40 Banks/Cembra", "40 Banks/UBS", "30 Areas/Finance/Dezember Berichte", "50 Members", "20 Projects/Bremen"]
+        .map { Candidate(folder: FolderEntry(path: $0), score: 0, reasons: []) }
+    eq(Matcher.rank(banks, query: "embr").map(\.path), ["40 Banks/Cembra"])
+    eq(Matcher.rank(banks, query: "mem").map(\.path), ["50 Members"])
+    eq(Matcher.rank(banks, query: "bank ubs").map(\.path), ["40 Banks/UBS"])
     eq(Matcher.filterScore("30 areas/finance/invoices/", ["zzz"]), nil)
 }
