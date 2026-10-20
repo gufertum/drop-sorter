@@ -134,4 +134,7 @@ func sorterConfigTests() throws {
     eq(invalid { $0.favorites = ["/abs"] }, .notRelative("/abs"))
     check(invalid { $0.archive = .init(folder: "A", pattern: "{nope}") } != nil, "bad pattern rejected")
     eq(invalid { $0.suggest.minMargin = -1 }, .negative("suggest.minMargin"))
+    eq(invalid { $0.dropApps = ["relative/x.app"] }, .notAnAppPath("relative/x.app"))
+    eq(invalid { $0.dropApps = ["/abs/x"] }, .notAnAppPath("/abs/x"))
+    check(invalid { $0.dropApps = ["~/Documents/x.app", "/Users/a/b.app"] } == nil, "valid drop app paths")
 }

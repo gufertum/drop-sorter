@@ -4,12 +4,14 @@ enum SorterConfigError: LocalizedError, Equatable {
     case notRelative(String)
     case invalidPattern(String, String)
     case negative(String)
+    case notAnAppPath(String)
 
     var errorDescription: String? {
         switch self {
         case .notRelative(let p): return "'\(p)' must be a folder path relative to the base folder, without a leading '/'."
         case .invalidPattern(let p, let why): return "Archive pattern '\(p)': \(why)"
         case .negative(let key): return "\(key) must not be negative."
+        case .notAnAppPath(let p): return "dropApps: '\(p)' must be an absolute path (or start with ~/) ending in .app."
         }
     }
 }
@@ -43,6 +45,8 @@ struct SorterConfig: Codable, Equatable {
     var suggest = Suggest()
     var shelf = Shelf()
     var menuBarIcon = false
+    /// Drop Mover apps managed in Settings, absolute paths (`~` allowed).
+    var dropApps: [String] = []
 
     init() {}
 
@@ -57,6 +61,11 @@ struct SorterConfig: Codable, Equatable {
         suggest = try c.decodeIfPresent(Suggest.self, forKey: .suggest) ?? Suggest()
         shelf = try c.decodeIfPresent(Shelf.self, forKey: .shelf) ?? Shelf()
         menuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .menuBarIcon) ?? false
+        dropApps = try c.decodeIfPresent([String].self, forKey: .dropApps) ?? []
+    }
+
+    var dropAppURLs: [URL] {
+        dropApps.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) }
     }
 
     var baseURL: URL? {
@@ -70,6 +79,9 @@ struct SorterConfig: Codable, Equatable {
         if let a = archive {
             do { _ = try Renamer.render(a.pattern, originalName: "x.pdf", isDirectory: false, date: Date()) }
             catch { throw SorterConfigError.invalidPattern(a.pattern, error.localizedDescription) }
+        }
+        if let bad = dropApps.first(where: { !$0.hasSuffix(".app") || !($0.hasPrefix("/") || $0.hasPrefix("~/")) }) {
+            throw SorterConfigError.notAnAppPath(bad)
         }
         if suggest.minScore < 0 { throw SorterConfigError.negative("suggest.minScore") }
         if suggest.minMargin < 0 { throw SorterConfigError.negative("suggest.minMargin") }

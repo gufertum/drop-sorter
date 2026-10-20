@@ -3,7 +3,7 @@
 Drop Sorter: a macOS agent app (Swift 5 language mode, AppKit, no Xcode project, no dependencies).
 A shelf shown while Finder is active takes dropped files and moves them into a subfolder of the
 Obsidian vault, chosen with a name-based suggestion and a filter. The repository also contains Drop
-Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter will generate and update.
+Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter generates, updates and adopts.
 User-facing docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
 Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 
@@ -24,7 +24,6 @@ Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 
 ```bash
 ./build.sh      # tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
-scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured Drop Mover copy (until phase 4)
 scripts/make-signing-identity.sh   # once: stable signing identity, picked up by build.sh
 ```
 
@@ -45,7 +44,11 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - **Drop Sorter is a single instance**: config and history in
   `~/Library/Application Support/li.sudo.dropsorter/`, bundle id `li.sudo.dropsorter`, signed with a
   stable identity so TCC grants survive rebuilds. Generated Drop Mover apps get `li.sudo.dropmover`
-  (phase 4; today's copies still carry `io.schaedler.dropmover`).
+  Older copies with `io.schaedler.dropmover` are adopted (= updated) by `DropAppFactory`.
+- **Drop apps**: `build.sh` embeds `build/Drop Mover.app` into Drop Sorter as
+  `Contents/Resources/DropMoverTemplate` (no `.app`, so Launch Services ignores it). A copy is current
+  when its executable equals the template's byte for byte; update replaces the bundle, keeps
+  `config.json`, trashes the old bundle and puts it back if the swap fails. Tests use a fake trash.
 - The vault is rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
   watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
 - The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
@@ -60,8 +63,7 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - Fail loudly: corrupt config or history files throw instead of being reset; `SorterConfig.validate()`
   at startup and before saving; errors are logged via `NSLog` with the prefix in `Mover.logPrefix`.
 - Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
-- Keep the token list in `Renamer.swift`, the table in docs/DROP-MOVER.md and the check in
-  `scripts/install-copy.sh` in sync. The same applies to the default pattern. Keep the scoring
+- Keep the token list in `Renamer.swift` and the table in docs/DROP-MOVER.md in sync. Keep the scoring
   table in README.md in sync with `Matcher.score`.
 
 ## Task tracking

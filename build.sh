@@ -48,9 +48,11 @@ SORTER="$BUILD/Drop Sorter.app"
 mkdir -p "$SORTER/Contents/MacOS" "$SORTER/Contents/Resources"
 iconutil -c icns "$BUILD/obj/SorterIcon.iconset" -o "$SORTER/Contents/Resources/AppIcon.icns"
 "${SWIFTC[@]}" -target "$(uname -m)-apple-macos$MIN_OS" \
-  "${CORE[@]}" Sources/DropSorter/*.swift \
+  "${CORE[@]}" Sources/DropSorter/*.swift Sources/DropMover/IconRenderer.swift \
   -o "$SORTER/Contents/MacOS/DropSorter"
 cp Resources/DropSorter/Info.plist "$SORTER/Contents/Info.plist"
+# Template for generated Drop Mover apps. No .app extension, so Launch Services does not register it.
+cp -R "$APP" "$SORTER/Contents/Resources/DropMoverTemplate"
 printf 'APPL????' > "$SORTER/Contents/PkgInfo"
 # Drop Sorter keeps its state in Application Support, so its bundle can be sealed.
 SIGN_ID="${DROPSORTER_SIGN_ID:-}"

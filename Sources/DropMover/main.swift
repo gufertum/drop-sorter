@@ -162,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             alert("Cannot read configuration", "\(store.url.path)\n\n\(error.localizedDescription)\n\nUsing defaults until you change a setting.")
         }
         NSApp.applicationIconImage = IconRenderer.image(label: targetURL?.lastPathComponent)
-        // Copies configured by scripts/install-copy.sh have a target but no labelled Finder icon yet.
+        // Copies made by hand or whose icon was lost have a target but no labelled Finder icon yet.
         let customIcon = Bundle.main.bundleURL.appendingPathComponent("Icon\r")
         if config.target != nil && !FileManager.default.fileExists(atPath: customIcon.path) {
             updateIcons()

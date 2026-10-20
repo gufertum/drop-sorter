@@ -1,7 +1,8 @@
 import AppKit
 import ServiceManagement
 
-/// Settings: vault, archive, favorites, shelf, menu-bar icon, open at login, learned history.
+/// Settings: vault, archive, shelf, menu-bar icon, open at login, learned history (General tab);
+/// favorites and Drop Mover apps (second tab).
 /// Every change is saved at once through `onChange`, which returns an error text when it was refused.
 final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     var onChange: ((SorterConfig) -> String?)?
@@ -25,8 +26,13 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let loginNote = NSTextField(labelWithString: "")
     private let historyLabel = NSTextField(labelWithString: "")
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
+    private let dropTable = NSTableView()
+    private let dropApps: DropAppManager
+    private var dropInfos: [DropAppInfo] = []
+    private let dropNote = NSTextField(wrappingLabelWithString: "")
 
-    init(config: SorterConfig, configPath: String, historyWords: Int) {
+    init(config: SorterConfig, configPath: String, historyWords: Int, dropApps: DropAppManager) {
+        self.dropApps = dropApps
         self.config = config
         self.configPath = configPath
         self.historyWords = historyWords
@@ -127,40 +133,85 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             l.font = .systemFont(ofSize: 12, weight: .semibold)
             return l
         }
-        let views: [NSView] = [
+        for (id, title, width) in [("name", "App", 170.0), ("place", "Folder", 150.0), ("target", "Moves to", 160.0), ("status", "Status", 110.0)] {
+            let c = NSTableColumn(identifier: .init(id))
+            c.title = title
+            c.width = width
+            dropTable.addTableColumn(c)
+        }
+        dropTable.dataSource = self
+        dropTable.delegate = self
+        dropTable.usesAlternatingRowBackgroundColors = true
+        dropTable.doubleAction = #selector(revealDropApp)
+        dropTable.target = self
+        let dropScroll = NSScrollView()
+        dropScroll.documentView = dropTable
+        dropScroll.hasVerticalScroller = true
+        dropScroll.borderType = .bezelBorder
+        let dropButtons = NSStackView(views: [
+            button("New…", #selector(newDropApp)), button("Find…", #selector(findDropApps)),
+            button("Update", #selector(updateSelectedDropApp)), button("Update All", #selector(updateAllDropApps)),
+            button("Reveal", #selector(revealDropApp)), button("Remove from List", #selector(removeDropApp)),
+        ])
+        dropNote.font = .systemFont(ofSize: 11)
+        dropNote.textColor = .secondaryLabelColor
+
+        let general: [NSView] = [
             heading("Vault"), vaultRow, small("Every subfolder is a target. Hidden folders and packages are skipped."),
             heading("Archive"), archiveRow, patternRow, patternPreview,
             small("Items moved into the archive folder or its subfolders are renamed. Tokens: " + Renamer.tokenHelp),
-            heading("Favorites"), favScroll, favoriteButtons,
-            small("Each favorite gets its own spot on the shelf. Dropping there moves at once, with Undo in the toast."),
             heading("Shelf"), desktopCheck, delayRow,
             heading("General"), menuBarCheck, loginCheck, loginNote, historyRow,
-            errorLabel,
-            small("Saved on every change to \(configPath). The file is rewritten without comments; a hand-written config.yaml is kept once as config.yaml.bak."),
         ]
-        let stack = NSStackView(views: views)
+        let favorites: [NSView] = [
+            heading("Favorites"), favScroll, favoriteButtons,
+            small("Each favorite gets its own spot on the shelf. Dropping there moves at once, with Undo in the toast."),
+            heading("Drop apps"), dropScroll, dropButtons, dropNote,
+            small("Drop apps are standalone Drop Mover copies for one fixed folder: drop files on the app icon in Finder and they move, without Drop Sorter running. Update and adopt keep each app's target and pattern; the old bundle goes to the Trash."),
+        ]
+        let pane = { (views: [NSView], gapsAfter: [Int]) -> NSView in
+            let stack = NSStackView(views: views)
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            stack.spacing = 6
+            gapsAfter.forEach { stack.setCustomSpacing(16, after: views[$0]) }
+            stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+            for v in views where v is NSScrollView || v is NSStackView || (v as? NSTextField)?.font?.pointSize == 11 || v === self.patternPreview {
+                v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24).isActive = true
+            }
+            return stack
+        }
+        let tabs = NSTabView()
+        for (title, view) in [("General", pane(general, [2, 7, 10])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
+            let item = NSTabViewItem(identifier: title)
+            item.label = title
+            item.view = view
+            tabs.addTabViewItem(item)
+        }
+
+        let footer = small("Saved on every change to \(configPath). The file is rewritten without comments; a hand-written config.yaml is kept once as config.yaml.bak.")
+        let stack = NSStackView(views: [tabs, errorLabel, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 6
-        for after in [views[2], views[7], views[11], views[14], views[19]] { stack.setCustomSpacing(16, after: after) }
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 20, bottom: 16, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let container = NSView()
         container.addSubview(stack)
-        var constraints = [
+        NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             stack.topAnchor.constraint(equalTo: container.topAnchor),
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            stack.widthAnchor.constraint(equalToConstant: 620),
-            favScroll.heightAnchor.constraint(equalToConstant: 120),
+            stack.widthAnchor.constraint(equalToConstant: 700),
+            tabs.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            errorLabel.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            favScroll.heightAnchor.constraint(equalToConstant: 110),
+            dropScroll.heightAnchor.constraint(equalToConstant: 160),
             delayField.widthAnchor.constraint(equalToConstant: 60),
-        ]
-        for v in [vaultRow, archiveRow, patternRow, patternPreview, favScroll, errorLabel] + views.filter({ ($0 as? NSTextField)?.font?.pointSize == 11 }) {
-            constraints.append(v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40))
-        }
-        NSLayoutConstraint.activate(constraints)
+        ])
         window?.contentView = container
     }
 
@@ -177,6 +228,10 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         delayField.integerValue = config.shelf.hideDelayMs
         menuBarCheck.state = config.menuBarIcon ? .on : .off
         refreshLogin()
+        dropInfos = config.dropAppURLs.map(dropApps.inspect)
+        dropTable.reloadData()
+        let pending = dropInfos.filter(\.needsUpdate).count
+        dropNote.stringValue = pending == 0 ? "" : "\(pending) app\(pending == 1 ? "" : "s") can be updated or adopted."
         historyLabel.stringValue = "Learned from earlier moves: \(historyWords) word\(historyWords == 1 ? "" : "s")"
     }
 
@@ -346,9 +401,12 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
 
     // MARK: Favorites table
 
-    func numberOfRows(in tableView: NSTableView) -> Int { config.favorites.count }
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        tableView === dropTable ? dropInfos.count : config.favorites.count
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if tableView === dropTable { return dropCell(dropInfos[row], column: tableColumn?.identifier.rawValue ?? "") }
         let path = config.favorites[row]
         let label = NSTextField(labelWithString: path)
         label.lineBreakMode = .byTruncatingMiddle
@@ -357,5 +415,126 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             label.textColor = .systemRed
         }
         return label
+    }
+
+    // MARK: Drop apps
+
+    private func dropCell(_ info: DropAppInfo, column: String) -> NSView {
+        let label = NSTextField(labelWithString: "")
+        label.lineBreakMode = .byTruncatingMiddle
+        switch column {
+        case "name": label.stringValue = info.name
+        case "place": label.stringValue = DropAppManager.abbreviate(info.url.deletingLastPathComponent())
+        case "target": label.stringValue = info.config?.target.map { DropAppManager.abbreviate(URL(fileURLWithPath: $0)) } ?? "—"
+        default:
+            let (text, color) = DropAppManager.statusText(info)
+            label.stringValue = text
+            label.textColor = color
+        }
+        label.toolTip = info.url.path
+        return label
+    }
+
+    private func addDropApps(_ urls: [URL]) {
+        let known = Set(config.dropAppURLs.map(\.standardizedFileURL.path))
+        let new = urls.filter { !known.contains($0.standardizedFileURL.path) }.map(DropAppManager.abbreviate)
+        if !new.isEmpty { commit { $0.dropApps += new } }
+    }
+
+    @objc private func newDropApp() {
+        let pick = NSOpenPanel()
+        pick.canChooseDirectories = true
+        pick.canChooseFiles = false
+        pick.canCreateDirectories = true
+        pick.prompt = "Choose Target"
+        pick.message = "Step 1 of 2: the folder the new drop app moves files into."
+        pick.directoryURL = baseURL
+        guard pick.runModal() == .OK, let target = pick.url else { return }
+
+        let save = NSSavePanel()
+        save.allowedContentTypes = [.applicationBundle]
+        save.nameFieldStringValue = "_move-to-\(target.lastPathComponent).app"
+        save.prompt = "Create"
+        save.message = "Step 2 of 2: name and place of the drop app (usually the folder you sort from)."
+        save.directoryURL = baseURL
+        guard save.runModal() == .OK, let url = save.url else { return }
+
+        let rel = baseURL.flatMap { FolderIndex.relativePath(of: target, in: $0) }
+        let pattern = rel.flatMap { config.renamePattern(forTarget: $0) } ?? Renamer.defaultPattern
+        do {
+            try dropApps.create(at: url, target: target, pattern: pattern)
+            errorLabel.stringValue = ""
+            addDropApps([url])
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            errorLabel.stringValue = "Drop app not created: \(error.localizedDescription)"
+        }
+    }
+
+    @objc private func findDropApps() {
+        let pick = NSOpenPanel()
+        pick.canChooseDirectories = true
+        pick.canChooseFiles = false
+        pick.prompt = "Search Here"
+        pick.message = "Find Drop Mover apps (also old copies) in this folder and its subfolders."
+        pick.directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard pick.runModal() == .OK, let root = pick.url else { return }
+        errorLabel.stringValue = ""
+        dropNote.stringValue = "Searching \(DropAppManager.abbreviate(root))…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let found = DropAppFactory.find(in: [root])
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let before = self.config.dropApps.count
+                self.addDropApps(found)
+                self.refresh()
+                let added = self.config.dropApps.count - before
+                self.dropNote.stringValue = "Found \(found.count) drop app\(found.count == 1 ? "" : "s") in \(DropAppManager.abbreviate(root)), \(added) new in the list. " + self.dropNote.stringValue
+            }
+        }
+    }
+
+    private func runUpdates(_ infos: [DropAppInfo]) {
+        var failed: [String] = []
+        for info in infos {
+            do { try dropApps.update(info.url) }
+            catch {
+                NSLog("DropSorter: update of '%@' failed: %@", info.url.path, error.localizedDescription)
+                failed.append("\(info.name): \(error.localizedDescription)")
+            }
+        }
+        errorLabel.stringValue = failed.isEmpty ? "" : "Not updated: " + failed.joined(separator: "; ")
+        refresh()
+    }
+
+    @objc private func updateSelectedDropApp() {
+        let row = dropTable.selectedRow
+        guard row >= 0 else { errorLabel.stringValue = "Select a drop app first."; return }
+        guard dropInfos[row].state == .outdated || dropInfos[row].state == .legacy || dropInfos[row].state == .current else {
+            errorLabel.stringValue = "\(dropInfos[row].name) cannot be updated: \(DropAppManager.statusText(dropInfos[row]).0)."
+            return
+        }
+        runUpdates([dropInfos[row]])
+    }
+
+    @objc private func updateAllDropApps() {
+        let pending = dropInfos.filter(\.needsUpdate)
+        guard !pending.isEmpty else { errorLabel.stringValue = "All drop apps are up to date."; return }
+        runUpdates(pending)
+    }
+
+    @objc private func revealDropApp() {
+        let rows = dropTable.selectedRowIndexes.isEmpty ? IndexSet(integer: dropTable.clickedRow) : dropTable.selectedRowIndexes
+        let urls = rows.filter { $0 >= 0 && $0 < dropInfos.count }.map { dropInfos[$0].url }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
+    }
+
+    /// Only forgets the app; the bundle stays where it is.
+    @objc private func removeDropApp() {
+        let row = dropTable.selectedRow
+        guard row >= 0 else { return }
+        let path = dropInfos[row].url.standardizedFileURL.path
+        commit { $0.dropApps.removeAll { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath).standardizedFileURL.path == path } }
     }
 }
