@@ -28,7 +28,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let cliLabel = NSTextField(labelWithString: "")
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
     private let welcomeBox = NSBox()
-    private let tabs = NSTabView()
+    let tabs = NSTabView()
     private let dropTable = NSTableView()
     private let dropApps: DropAppManager
     private var dropInfos: [DropAppInfo] = []
@@ -86,12 +86,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
         let button = { (title: String, action: Selector) -> NSButton in NSButton(title: title, target: self, action: action) }
 
-        for (id, title, width) in [("path", "Folder", 540.0), ("subfolders", "Subfolders", 80.0)] {
-            let c = NSTableColumn(identifier: .init(id))
-            c.title = title
-            c.width = width
-            targetTable.addTableColumn(c)
-        }
+        Self.addColumns(targetTable, [("path", "Folder", 300.0, true), ("subfolders", "Subfolders", 80.0, false)])
         targetTable.dataSource = self
         targetTable.delegate = self
         targetTable.usesAlternatingRowBackgroundColors = true
@@ -99,15 +94,10 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         targetScroll.documentView = targetTable
         targetScroll.hasVerticalScroller = true
         targetScroll.borderType = .bezelBorder
-        targetScroll.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        targetScroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
         let baseRow = NSStackView(views: [button("Add Folder…", #selector(addTarget)), button("Remove", #selector(removeTarget)),
                                           button("Show in Finder", #selector(showTarget))])
-        for (id, title, width) in [("folder", "Folder", 170.0), ("subfolders", "Subfolders", 70.0), ("pattern", "Pattern", 190.0), ("example", "Example", 200.0)] {
-            let c = NSTableColumn(identifier: .init(id))
-            c.title = title
-            c.width = width
-            ruleTable.addTableColumn(c)
-        }
+        Self.addColumns(ruleTable, [("folder", "Folder", 200.0, true), ("subfolders", "Subfolders", 80.0, false), ("pattern", "Pattern", 190.0, true), ("example", "Example", 150.0, true)])
         ruleTable.dataSource = self
         ruleTable.delegate = self
         ruleTable.usesAlternatingRowBackgroundColors = true
@@ -115,18 +105,13 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         ruleScroll.documentView = ruleTable
         ruleScroll.hasVerticalScroller = true
         ruleScroll.borderType = .bezelBorder
-        ruleScroll.heightAnchor.constraint(equalToConstant: 110).isActive = true
+        ruleScroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
         let ruleButtons = NSStackView(views: [
             button("Add Folder…", #selector(addRule)), button("Remove", #selector(removeRule)),
             button("Date Prefix", #selector(setRuleDefault)), button("Keep Names", #selector(setRuleKeep)),
         ])
 
-        for (id, title, width) in [("path", "Folder", 540.0), ("copy", "Copy", 50.0)] {
-            let c = NSTableColumn(identifier: .init(id))
-            c.title = title
-            c.width = width
-            favoritesTable.addTableColumn(c)
-        }
+        Self.addColumns(favoritesTable, [("color", "", 26.0, false), ("path", "Folder", 300.0, true), ("copy", "Copy", 60.0, false)])
         favoritesTable.dataSource = self
         favoritesTable.delegate = self
         favoritesTable.usesAlternatingRowBackgroundColors = true
@@ -189,12 +174,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             l.font = .systemFont(ofSize: 12, weight: .semibold)
             return l
         }
-        for (id, title, width) in [("name", "App", 170.0), ("place", "Folder", 150.0), ("target", "Moves to", 160.0), ("status", "Status", 110.0)] {
-            let c = NSTableColumn(identifier: .init(id))
-            c.title = title
-            c.width = width
-            dropTable.addTableColumn(c)
-        }
+        Self.addColumns(dropTable, [("name", "App", 160.0, true), ("place", "Folder", 150.0, true), ("target", "Moves to", 160.0, true), ("status", "Status", 120.0, false)])
         dropTable.dataSource = self
         dropTable.delegate = self
         dropTable.usesAlternatingRowBackgroundColors = true
@@ -212,42 +192,65 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         dropNote.font = .systemFont(ofSize: 11)
         dropNote.textColor = .secondaryLabelColor
 
-        let general: [NSView] = [
-            heading("Target folders"), targetScroll, baseRow,
-            small("Files can go into these folders and, with Subfolders on, every folder inside them. Hidden folders and packages are skipped."),
-            heading("Rename rules"), ruleScroll, ruleButtons,
-            small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder."),
-            heading("Shelf"), desktopCheck, delayRow,
-            heading("General"), menuBarCheck, loginCheck, loginNote, historyRow, cliRow,
-            heading("API"), apiCheck, apiRow,
-            small("Sort, suggest, undo and read the configuration over HTTP on this Mac only. Every request needs the header \"Authorization: Bearer <token>\". The API cannot change settings. Same commands as dropsorter and its MCP server."),
+        // Four tabs of sections; each section is a heading, its controls and its hint.
+        let folders: [[NSView]] = [
+            [heading("Target folders"), targetScroll, baseRow,
+             small("Files can go into these folders and, with Subfolders on, every folder inside them. Hidden folders and packages are skipped.")],
+            [heading("Rename rules"), ruleScroll, ruleButtons,
+             small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder.")],
         ]
-        let favorites: [NSView] = [
-            heading("Favorites"), favScroll, favoriteButtons,
-            small("Each favorite gets its own spot on the shelf. Dropping there moves at once, with Undo in the toast."),
-            heading("Drop apps"), dropScroll, dropButtons, dropNote,
-            small("Drop apps are standalone Drop Mover copies for one fixed folder: drop files on the app icon in Finder and they move, without Drop Sorter running. Update and adopt keep each app's target and pattern; the old bundle goes to the Trash."),
+        let shelfPane: [[NSView]] = [
+            [heading("Favorites"), favScroll, favoriteButtons,
+             small("Each favorite gets its own coloured spot on the shelf. Dropping there moves at once (or copies, with Copy on), with Undo in the toast.")],
+            [heading("Shelf"), desktopCheck, delayRow, menuBarCheck],
         ]
-        let pane = { (views: [NSView], gapsAfter: [Int]) -> NSView in
+        let dropPane: [[NSView]] = [
+            [heading("Drop apps"), dropScroll, dropButtons, dropNote,
+             small("Drop apps are standalone Drop Mover copies for one fixed folder: drop files on the app icon in Finder and they move, without Drop Sorter running. Update and adopt keep each app's target and pattern; the old bundle goes to the Trash.")],
+        ]
+        let advanced: [[NSView]] = [
+            [heading("Startup"), loginCheck, loginNote],
+            [heading("Learning"), historyRow],
+            [heading("Command line"), cliRow],
+            [heading("API"), apiCheck, apiRow,
+             small("Sort, suggest, undo and read the configuration over HTTP on this Mac only. Every request needs the header \"Authorization: Bearer <token>\". The API cannot change settings. Same commands as dropsorter and its MCP server.")],
+        ]
+        let pane = { (sections: [[NSView]]) -> NSView in
+            let views = sections.flatMap { $0 }
             let stack = NSStackView(views: views)
             stack.orientation = .vertical
             stack.alignment = .leading
-            stack.spacing = 6
-            gapsAfter.forEach { stack.setCustomSpacing(16, after: views[$0]) }
-            stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-            for v in views where v is NSScrollView || v is NSStackView || (v as? NSTextField)?.font?.pointSize == 11 {
-                v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24).isActive = true
+            stack.spacing = 8
+            stack.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 20, right: 20)
+            for section in sections {
+                stack.setCustomSpacing(10, after: section[0])          // heading to its controls
+                stack.setCustomSpacing(28, after: section.last!)       // between sections
             }
-            return stack
+            for v in views where v is NSScrollView || v is NSStackView || (v as? NSTextField)?.font?.pointSize == 11 {
+                v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40).isActive = true
+            }
+            // Pinned into a plain container, so every tab uses the full width (a bare stack view
+            // shrinks to its content in some tabs).
+            let container = NSView()
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(stack)
+            NSLayoutConstraint.activate([
+                stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                stack.topAnchor.constraint(equalTo: container.topAnchor),
+                stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
+            ])
+            return container
         }
-        for (title, view) in [("General", pane(general, [3, 8, 11, 17])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
+        for (title, sections) in [("Folders", folders), ("Shelf", shelfPane), ("Drop Apps", dropPane), ("Advanced", advanced)] {
             let item = NSTabViewItem(identifier: title)
             item.label = title
-            item.view = view
+            item.view = pane(sections)
             tabs.addTabViewItem(item)
         }
+        for t in [targetTable, ruleTable, favoritesTable, dropTable] { t.rowHeight = 24 }
 
-        let footer = small("Saved on every change to \(configPath). The file is rewritten without comments; a hand-written config.yaml is kept once as config.yaml.bak.")
+        let footer = small("Saved on every change to \(SorterConfig.abbreviate(configPath)). The file is rewritten without comments; a hand-written config.yaml is kept once as config.yaml.bak.")
         let welcomeText = NSTextField(wrappingLabelWithString: "Welcome to Drop Sorter. The shelf sits at the bottom right of your screen and pops up whenever Finder is the active app: drop files on it and pick the folder they belong in. Start by adding your target folders below; each one and every folder inside it can take files. Launch Drop Sorter again any time to bring the shelf back.")
         welcomeText.font = .systemFont(ofSize: 12)
         welcomeBox.boxType = .custom
@@ -273,13 +276,13 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             stack.topAnchor.constraint(equalTo: container.topAnchor),
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            stack.widthAnchor.constraint(equalToConstant: 700),
+            stack.widthAnchor.constraint(equalToConstant: 740),
             tabs.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             welcomeBox.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             errorLabel.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
-            favScroll.heightAnchor.constraint(equalToConstant: 110),
-            dropScroll.heightAnchor.constraint(equalToConstant: 160),
+            favScroll.heightAnchor.constraint(equalToConstant: 200),
+            dropScroll.heightAnchor.constraint(equalToConstant: 260),
             delayField.widthAnchor.constraint(equalToConstant: 60),
         ])
         window?.contentView = container
@@ -349,6 +352,20 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         return SorterConfig.abbreviate(url.path)
     }
 
+    /// Flexible columns share the table width; fixed ones (checkboxes, colour) keep theirs, so they
+    /// never slide out of view.
+    static func addColumns(_ table: NSTableView, _ columns: [(String, String, CGFloat, Bool)]) {
+        for (id, title, width, flexible) in columns {
+            let c = NSTableColumn(identifier: .init(id))
+            c.title = title
+            c.width = width
+            c.minWidth = flexible ? 80 : width
+            c.resizingMask = flexible ? [.autoresizingMask, .userResizingMask] : []
+            table.addTableColumn(c)
+        }
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+    }
+
     // MARK: Target folders
 
     @objc private func addTarget() {
@@ -395,12 +412,23 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         return pathLabel(t.path)
     }
 
-    /// A folder path; red with "(not found)" when it does not exist.
-    private func pathLabel(_ path: String) -> NSTextField {
-        let label = NSTextField(labelWithString: path)
+    /// Short name of a folder: target name + path inside it (as in the chooser), else "~/…".
+    private func shortName(_ path: String) -> String {
+        let id = SorterConfig.folderID(path)
+        let roots = config.targetRoots.map(\.url.path)
+        let labels = ShelfLabels.labels(roots)
+        let best = zip(roots, labels).filter { id == $0.0 || id.hasPrefix($0.0 + "/") }.max { $0.0.count < $1.0.count }
+        guard let (root, label) = best else { return SorterConfig.abbreviate(id) }
+        return id == root ? label : label + id.dropFirst(root.count)
+    }
+
+    /// A folder path (short name with `short`); red with "(not found)" when it does not exist.
+    private func pathLabel(_ path: String, short: Bool = false) -> NSTextField {
+        let label = NSTextField(labelWithString: short ? shortName(path) : path)
+        label.toolTip = path
         label.lineBreakMode = .byTruncatingMiddle
         if !FileManager.default.fileExists(atPath: SorterConfig.folderID(path)) {
-            label.stringValue = path + "  (not found)"
+            label.stringValue += "  (not found)"
             label.textColor = .systemRed
         }
         return label
@@ -613,6 +641,12 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         if tableView === ruleTable { return ruleCell(row, column: tableColumn?.identifier.rawValue ?? "") }
         if tableView === targetTable { return targetCell(row, column: tableColumn?.identifier.rawValue ?? "") }
         let fav = config.favorites[row]
+        if tableColumn?.identifier.rawValue == "color" {
+            // The spot's colour on the shelf.
+            let dot = NSImageView(image: NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)!)
+            dot.contentTintColor = ShelfPanel.palette[row % ShelfPanel.palette.count]
+            return dot
+        }
         if tableColumn?.identifier.rawValue == "copy" {
             let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(favoriteCopyToggled(_:)))
             check.state = fav.copy ? .on : .off
@@ -620,7 +654,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             check.toolTip = "On: dropping on this spot copies instead of moving."
             return check
         }
-        return pathLabel(fav.folder)
+        return pathLabel(fav.folder, short: true)
     }
 
     private func ruleCell(_ row: Int, column: String) -> NSView {
@@ -649,7 +683,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             label.lineBreakMode = .byTruncatingMiddle
             return label
         default:
-            return pathLabel(folder)
+            return pathLabel(folder, short: true)
         }
     }
 
