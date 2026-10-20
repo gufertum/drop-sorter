@@ -46,6 +46,12 @@ so it is easy to find.
 - **Copy instead of move**: hold ⌥ while dropping (the cursor shows the green +), like in Finder. A
   favorite can be set to always copy (shown with a copy symbol), and so can a drop app. Undo of a copy
   moves the copies to the Trash; the originals are never touched.
+- **Identical files**: before moving, each file is compared by content (size, then SHA-256) with the
+  files already in the target folder, so a date prefix does not hide a duplicate. Nothing is ever
+  overwritten. If a twin exists, an orange toast offers **Undo** (put everything back), **Delete
+  Duplicates** (the new copies go to the Trash, the existing files stay) and **Keep Both**. CLI:
+  `--skip-identical` leaves such files in place; MCP/REST: `identical: "skip"`; results list
+  `identicalTo` per item.
 - **Undo Last Drop** (shelf right-click menu, menu-bar icon) undoes the most recent drop once, also
   after the toast is gone and also when some items of that drop failed. Older drops cannot be undone.
 - **Settings**: gear on the shelf, right-click on the shelf, or the optional menu-bar icon (dropping

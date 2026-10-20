@@ -63,6 +63,8 @@ struct SuggestReport: Codable, Equatable {
 struct ItemReport: Codable, Equatable {
     let from: String
     let to: String
+    /// A file already in the target folder with the same content.
+    var identicalTo: String? = nil
 }
 
 struct FailureReport: Codable, Equatable {
@@ -76,6 +78,8 @@ struct SortReport: Codable, Equatable {
     let folder: String
     let dryRun: Bool
     let items: [ItemReport]
+    /// Left in place because the target already holds the same content (`identical: skip`).
+    let skipped: [ItemReport]
     let failed: [FailureReport]
 }
 
@@ -195,11 +199,13 @@ final class SortService {
 
     /// Moves or copies `paths` (absolute, existing) into `folder` (relative to the base, a real target),
     /// or into the clear suggestion when `folder` is nil. `dryRun` reports the names without touching anything.
-    func sort(_ paths: [String], into folder: String?, mode: TransferMode = .move, dryRun: Bool = false,
-              source: String = "cli", now: Date = Date()) throws -> SortReport {
-        let outcome = try perform(paths.map(Self.existingURL), into: folder, mode: mode, dryRun: dryRun, source: source, now: now)
+    func sort(_ paths: [String], into folder: String?, mode: TransferMode = .move, identical: IdenticalPolicy = .keep,
+              dryRun: Bool = false, source: String = "cli", now: Date = Date()) throws -> SortReport {
+        let outcome = try perform(paths.map(Self.existingURL), into: folder, mode: mode, identical: identical,
+                                  dryRun: dryRun, source: source, now: now)
+        let item = { (m: Move) in ItemReport(from: m.source.path, to: m.destination.path, identicalTo: m.identicalTo?.path) }
         return SortReport(id: outcome.id.uuidString, mode: mode, folder: outcome.folder, dryRun: dryRun,
-                          items: outcome.result.moves.map { ItemReport(from: $0.source.path, to: $0.destination.path) },
+                          items: outcome.result.moves.map(item), skipped: outcome.result.skipped.map(item),
                           failed: outcome.result.failures.map { FailureReport(name: $0.name, reason: $0.reason) })
     }
 
@@ -211,8 +217,8 @@ final class SortService {
     }
 
     /// The shared implementation; the app calls it with the URLs from a drop.
-    func perform(_ urls: [URL], into folder: String?, mode: TransferMode, dryRun: Bool = false,
-                 source: String, now: Date = Date()) throws -> SortOutcome {
+    func perform(_ urls: [URL], into folder: String?, mode: TransferMode, identical: IdenticalPolicy = .keep,
+                 dryRun: Bool = false, source: String, now: Date = Date()) throws -> SortOutcome {
         guard !urls.isEmpty else { throw ServiceError.invalidInput("Give at least one file or folder.") }
         let config = try config()
         let (base, folders) = try baseAndFolders(config)
@@ -236,7 +242,12 @@ final class SortService {
                     let dest = Renamer.uniqueDestination(in: base.appendingPathComponent(target), name: name, isDirectory: isDir) {
                         FileManager.default.fileExists(atPath: $0.path)
                     }
-                    result.moves.append(Move(source: u, destination: dest))
+                    let twin = isDir ? nil : Identical.find(u, in: base.appendingPathComponent(target))
+                    if let twin, identical == .skip {
+                        result.skipped.append(Move(source: u, destination: u, identicalTo: twin))
+                    } else {
+                        result.moves.append(Move(source: u, destination: dest, identicalTo: twin))
+                    }
                 } catch {
                     result.failures.append((u.lastPathComponent, error.localizedDescription))
                 }
@@ -247,11 +258,41 @@ final class SortService {
             var history = try historyStore.load()
             // Forget folders that were renamed or deleted since.
             history.prune(keeping: Set(folders.map(\.path)))
-            let outcome = Sorter.sort(urls, into: target, base: base, config: config, mode: mode, history: &history, now: now)
+            let outcome = Sorter.sort(urls, into: target, base: base, config: config, mode: mode, identical: identical,
+                                      history: &history, now: now)
             try historyStore.save(history)
             // An operation that changed nothing leaves the previous one undoable.
             if !outcome.result.moves.isEmpty { try journalStore.save(JournalEntry(outcome, source: source, date: now)) }
             return outcome
+        }
+    }
+
+    /// "Delete Duplicates": moves the items of operation `id` whose content already existed in the target
+    /// to the Trash (they are redundant there) and takes them out of the journal, so Undo still works for
+    /// the rest. Only while `id` is the most recent operation.
+    func removeIdentical(id: String) throws -> [ItemReport] {
+        try lock.withLock {
+            guard let entry = try journalStore.load() else { throw ServiceError.nothingToUndo }
+            guard id.uppercased() == entry.id.uuidString else { throw ServiceError.staleUndo }
+            var history = try historyStore.load()
+            var removed: [ItemReport] = []
+            var kept: [Move] = []
+            for m in entry.moves {
+                guard let twin = m.identicalTo else { kept.append(m); continue }
+                do {
+                    let gone = try removeCopy(m.destination)
+                    removed.append(ItemReport(from: m.destination.path, to: (gone ?? m.destination).path, identicalTo: twin.path))
+                    let (base, _) = Tokenizer.baseAndExtension(m.source.lastPathComponent, isDirectory: false)
+                    history.forget(tokens: Tokenizer.tokens(base), folder: entry.folder)
+                } catch {
+                    Log.info(String(format: "could not remove duplicate '%@': %@", m.destination.path, error.localizedDescription))
+                    kept.append(m)
+                }
+            }
+            try historyStore.save(history)
+            try journalStore.save(kept.isEmpty ? nil : JournalEntry(id: entry.id, date: entry.date, folder: entry.folder,
+                                                                     mode: entry.mode, moves: kept, source: entry.source))
+            return removed
         }
     }
 

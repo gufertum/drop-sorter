@@ -308,6 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showResult(_ o: SortOutcome) {
         let r = o.result
+        if !r.identical.isEmpty { return showIdentical(o) }
         var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
         if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
@@ -321,6 +322,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             actions.append(.init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(r.moved) })
         }
         toast.show(title: title, lines: lines, isError: failed, actions: actions)
+    }
+
+    /// Some dropped files already existed in the target with the same content (by hash). Nothing was
+    /// overwritten; the user decides: undo the drop, delete the new duplicates, or keep both.
+    private func showIdentical(_ o: SortOutcome) {
+        let r = o.result
+        let twins = r.identical
+        var lines = twins.prefix(6).map { "= \($0.source.lastPathComponent) is identical to \($0.identicalTo!.lastPathComponent)" }
+        if twins.count > 6 { lines.append("… and \(twins.count - 6) more") }
+        let others = r.moves.count - twins.count
+        if others > 0 { lines.append("\(r.mode.pastTense) \(plural(others)) without a twin.") }
+        lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
+        let title = "\(twins.count) identical file\(twins.count == 1 ? "" : "s") already in \(o.folder)"
+        toast.show(title: title, lines: lines, isError: false, isWarning: true, actions: [
+            .init(title: "Undo") { [weak self] in self?.undo(id: o.id) },
+            .init(title: "Delete Duplicate\(twins.count == 1 ? "" : "s")") { [weak self] in self?.deleteIdentical(o) },
+            .init(title: "Keep Both") {},
+        ])
+    }
+
+    private func deleteIdentical(_ o: SortOutcome) {
+        do {
+            let removed = try service.removeIdentical(id: o.id.uuidString)
+            toast.show(title: "Moved \(plural(removed.count)) to the Trash", lines: removed.prefix(6).map {
+                "✕ " + ($0.from as NSString).lastPathComponent + " (same as " + (($0.identicalTo ?? "") as NSString).lastPathComponent + ")"
+            }, isError: false, actions: [])
+        } catch let e as ServiceError where e == .staleUndo || e == .nothingToUndo {
+            toast.show(title: "Not deleted", lines: ["Another operation came after this drop; delete the duplicates in Finder."],
+                       isError: false, isWarning: true, actions: [])
+        } catch {
+            showError("Duplicates not deleted", [error.localizedDescription], openConfig: false)
+        }
     }
 
     private var historyWords: Int { (try? service.history().counts.count) ?? 0 }

@@ -12,14 +12,15 @@ final class SortToast: NSObject {
     private var timer: Timer?
     private var duration: TimeInterval = 8
 
-    func show(title: String, lines: [String], isError: Bool, actions: [Action]) {
+    /// `isWarning`: orange and as long as an error, for things the user should decide (identical files).
+    func show(title: String, lines: [String], isError: Bool, isWarning: Bool = false, actions: [Action]) {
         dismiss()
-        duration = isError ? 20 : 8
+        duration = isError || isWarning ? 20 : 8
         let width: CGFloat = 400
 
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = isError ? .systemRed : .labelColor
+        titleLabel.textColor = isError ? .systemRed : isWarning ? .systemOrange : .labelColor
         titleLabel.lineBreakMode = .byTruncatingMiddle
         let body = NSTextField(wrappingLabelWithString: lines.joined(separator: "\n"))
         body.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -65,7 +66,7 @@ final class SortToast: NSObject {
             titleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: width - 32),
         ])
         let glow = GlowContainer(content: content, cornerRadius: 12)
-        if isError { glow.color = .systemRed }
+        if isError { glow.color = .systemRed } else if isWarning { glow.color = .systemOrange }
         let size = glow.fittingSize
 
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),

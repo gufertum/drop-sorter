@@ -29,6 +29,7 @@ enum CLI {
     Options:
       --json        machine-readable output
       --dry-run     move/copy: show the new names without touching anything
+      --skip-identical  move/copy: leave files whose content is already in the target folder
       --limit N     suggest: number of candidates (default 8)
 
     FOLDER is relative to the base folder, e.g. "30 Areas/Finance". Config and history live in
@@ -39,6 +40,7 @@ enum CLI {
     struct Options {
         var json = false
         var dryRun = false
+        var skipIdentical = false
         var auto = false
         var to: String?
         var query = ""
@@ -61,6 +63,7 @@ enum CLI {
             switch a {
             case "--json": o.json = true
             case "--dry-run", "-n": o.dryRun = true
+            case "--skip-identical": o.skipIdentical = true
             case "--auto": o.auto = true
             case "--to", "-t": o.to = try value(a)
             case "-q", "--query": o.query = try value(a)
@@ -105,7 +108,8 @@ enum CLI {
             case "move", "copy":
                 guard (o.to != nil) != o.auto else { throw ServiceError.invalidInput("Give either --to FOLDER or --auto.") }
                 guard !o.positional.isEmpty else { throw ServiceError.invalidInput("Give the files or folders to \(command).") }
-                let r = try service.sort(o.positional, into: o.to, mode: command == "copy" ? .copy : .move, dryRun: o.dryRun, source: "cli")
+                let r = try service.sort(o.positional, into: o.to, mode: command == "copy" ? .copy : .move,
+                                         identical: o.skipIdentical ? .skip : .keep, dryRun: o.dryRun, source: "cli")
                 out(o.json ? try encode(r) : text(r))
                 return r.failed.isEmpty ? Exit.ok.rawValue : Exit.partial.rawValue
             case "undo":
@@ -176,7 +180,11 @@ enum CLI {
     static func text(_ r: SortReport) -> String {
         let verb = r.dryRun ? (r.mode == .copy ? "Would copy" : "Would move") : r.mode.pastTense
         var lines = ["\(verb) \(r.items.count) item\(r.items.count == 1 ? "" : "s") to \(r.folder)" + (r.dryRun ? "" : " (undo: dropsorter undo)")]
-        lines += r.items.map { "  \(($0.from as NSString).lastPathComponent) → \($0.to)" }
+        lines += r.items.map {
+            "  \(($0.from as NSString).lastPathComponent) → \($0.to)"
+                + ($0.identicalTo.map { "  (identical to existing \(($0 as NSString).lastPathComponent))" } ?? "")
+        }
+        lines += r.skipped.map { "  = \(($0.from as NSString).lastPathComponent) left in place: identical to \($0.identicalTo ?? "?")" }
         lines += r.failed.map { "  ✗ \($0.name): \($0.reason)" }
         return lines.joined(separator: "\n")
     }
