@@ -38,7 +38,7 @@ Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, App
 ```bash
 build/suggest ~/Obsidian/Private "Rechnung_Swisscom_2026-09.pdf" "invoice-hetzner.pdf"
 build/suggest -q "fin inv" ~/Obsidian/Private "scan.pdf"          # what the chooser shows after typing
-build/suggest -c config.json ~/Obsidian/Private "old-notes/"       # trailing "/" = folder
+build/suggest -c config.yaml ~/Obsidian/Private "old-notes/"       # trailing "/" = folder
 ```
 
 It prints the preselected folder (or `none` when the match is not clear) and the top 8 folders with
@@ -66,22 +66,41 @@ or in order); matches at the start of a path segment rank first.
 
 ## Configuration
 
-`~/Library/Application Support/li.sudo.dropsorter/config.json`, every key optional:
+`~/Library/Application Support/li.sudo.dropsorter/config.yaml`, every key optional. `config.json` with
+the same keys is read when there is no `config.yaml`; when both exist, `config.yaml` wins and a warning
+is logged. Saving writes back to the file that was read.
 
-```json
-{
-  "base": "~/Obsidian/Private",
-  "archive": { "folder": "90 Archive", "pattern": "{date}_{time}_{name}{ext}" },
-  "favorites": ["00 Inbox", "30 Areas/Finance/Invoices", "90 Archive"],
-  "exclude": ["50 Attachments/_excalidraw"],
-  "aliases": { "30 Areas/Finance/Invoices": ["rechnung", "bill"] },
-  "extensionRules": { "heic jpg png": "50 Attachments/Images" },
-  "suggest": { "minScore": 3, "minMargin": 1 },
-  "shelf": { "showOnDesktop": true, "hideDelayMs": 400 },
-  "menuBarIcon": false
-}
+```yaml
+base: ~/Obsidian/Private
+archive:
+  folder: 90 Archive
+  pattern: "{date}_{time}_{name}{ext}"   # quoted: a value starting with { must be
+favorites:
+  - 00 Inbox
+  - 30 Areas/Finance/Invoices
+  - 90 Archive
+exclude:
+  - 50 Attachments/_excalidraw
+aliases:
+  30 Areas/Finance/Invoices: [rechnung, bill]
+extensionRules:
+  heic jpg png: 50 Attachments/Images
+suggest:
+  minScore: 3
+  minMargin: 1
+shelf:
+  showOnDesktop: true
+  hideDelayMs: 400
+menuBarIcon: false
 ```
 
 All folder paths are relative to `base`. Hidden folders (`.obsidian`, `.trash`, `.git`) and packages
 are never targets. The archive pattern uses the Drop Mover tokens (see
 [docs/DROP-MOVER.md](docs/DROP-MOVER.md#rename-pattern)).
+
+The YAML reader is built in (no dependencies) and supports the part of YAML a config file needs:
+mappings, `- ` lists, `[a, b]` and `{a: 1}` on one line, quotes, `#` comments. It refuses anchors,
+tags, `|` / `>` blocks and tabs with the line number instead of guessing. Only `true` and `false`
+are booleans (`yes` stays text), and a value that looks like a number or boolean but is meant as a
+folder name needs quotes (`- "2026"`). Errors name the file and the key, e.g.
+`config.yaml: suggest.minScore: expected a number`. A broken file is never reset.

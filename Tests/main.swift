@@ -8,6 +8,8 @@ let suites: [(String, () throws -> Void)] = [
     ("History", historyTests),
     ("Mover", moverTests),
     ("SorterConfig", sorterConfigTests),
+    ("YAML", yamlTests),
+    ("SorterConfigStore", sorterConfigStoreTests),
     ("ShelfVisibility", shelfVisibilityTests),
     ("ChooserModel", chooserModelTests),
     ("Sorter", sorterTests),
