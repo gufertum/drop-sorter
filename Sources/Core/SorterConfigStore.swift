@@ -10,9 +10,9 @@ struct ConfigFileError: LocalizedError {
 /// Saving writes back to the file that was read, or creates `config.yaml`.
 struct SorterConfigStore {
     /// Key order for written YAML: the order of the README, not the alphabet.
-    static let keyOrder = ["base", "archive", "folder", "pattern", "favorites", "exclude", "aliases",
+    static let keyOrder = ["base", "renameRules", "favorites", "exclude", "aliases",
                            "extensionRules", "suggest", "minScore", "minMargin", "shelf", "showOnDesktop",
-                           "hideDelayMs", "menuBarIcon", "dropApps"]
+                           "hideDelayMs", "menuBarIcon", "dropApps", "pattern", "subfolders"]
 
     let directory: URL
     var yamlURL: URL { directory.appendingPathComponent("config.yaml") }

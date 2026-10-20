@@ -17,8 +17,8 @@ enum Sorter {
         }
     }
 
-    /// Moves `urls` into `folder` (relative to the base). Items going into the archive get the archive
-    /// pattern. Each moved item is recorded in `history` under the words of its original name.
+    /// Moves `urls` into `folder` (relative to the base), renamed by the rename rule that covers the
+    /// folder, if any. Each moved item is recorded in `history` under the words of its original name.
     static func sort(_ urls: [URL], into folder: String, base: URL, config: SorterConfig,
                      history: inout History, now: Date = Date()) -> SortOutcome {
         let target = base.appendingPathComponent(folder, isDirectory: true)

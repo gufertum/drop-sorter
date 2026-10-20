@@ -217,7 +217,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let c = model.visible[row]
         let cell = tableView.makeView(withIdentifier: FolderCell.id, owner: nil) as? FolderCell ?? FolderCell()
-        cell.show(c, favorite: model.favorites.contains(c.path), archive: renamePattern(c.path) != nil)
+        cell.show(c, favorite: model.favorites.contains(c.path), renames: renamePattern(c.path) != nil)
         return cell
     }
 
@@ -264,7 +264,7 @@ final class FolderCell: NSTableCellView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func show(_ c: Candidate, favorite: Bool, archive: Bool) {
+    func show(_ c: Candidate, favorite: Bool, renames: Bool) {
         let cut = c.path.range(of: "/", options: .backwards).map { c.path.distance(from: c.path.startIndex, to: $0.upperBound) } ?? 0
         let s = NSMutableAttributedString(string: String(c.path.prefix(cut)),
                                           attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 13)])
@@ -273,7 +273,7 @@ final class FolderCell: NSTableCellView {
         path.attributedStringValue = s
         detail.stringValue = c.score > 0 ? c.reasons.joined(separator: " · ") : ""
         detail.isHidden = detail.stringValue.isEmpty
-        badges.stringValue = [favorite ? "★" : nil, archive ? "prefix" : nil, c.score > 0 ? String(format: "%.1f", c.score) : nil]
+        badges.stringValue = [favorite ? "★" : nil, renames ? "rename" : nil, c.score > 0 ? String(format: "%.1f", c.score) : nil]
             .compactMap { $0 }.joined(separator: "  ")
     }
 }

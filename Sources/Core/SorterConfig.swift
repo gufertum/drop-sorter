@@ -9,21 +9,16 @@ enum SorterConfigError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notRelative(let p): return "'\(p)' must be a folder path relative to the base folder, without a leading '/'."
-        case .invalidPattern(let p, let why): return "Archive pattern '\(p)': \(why)"
+        case .invalidPattern(let p, let why): return "Rename pattern '\(p)': \(why)"
         case .negative(let key): return "\(key) must not be negative."
         case .notAnAppPath(let p): return "dropApps: '\(p)' must be an absolute path (or start with ~/) ending in .app."
         }
     }
 }
 
-/// Drop Sorter's configuration (~/Library/Application Support/li.sudo.dropsorter/config.json).
+/// Drop Sorter's configuration (~/Library/Application Support/li.sudo.dropsorter/config.yaml or .json).
 /// Every key is optional in the file; missing keys take the defaults below.
 struct SorterConfig: Codable, Equatable {
-    struct Archive: Codable, Equatable {
-        var folder: String
-        var pattern: String = Renamer.defaultPattern
-    }
-
     struct Suggest: Codable, Equatable {
         var minScore = 3.0
         var minMargin = 1.0
@@ -36,7 +31,9 @@ struct SorterConfig: Codable, Equatable {
 
     /// Absolute path of the vault; `~` is expanded.
     var base: String?
-    var archive: Archive?
+    /// Folder -> rename rule for items moved there. The most specific applicable rule wins; `{original}`
+    /// keeps the name, e.g. for a subfolder of a renamed tree.
+    var renameRules: [String: RenameRule] = [:]
     var favorites: [String] = []
     var exclude: [String] = []
     var aliases: [String: [String]] = [:]
@@ -53,7 +50,12 @@ struct SorterConfig: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         base = try c.decodeIfPresent(String.self, forKey: .base)
-        archive = try c.decodeIfPresent(Archive.self, forKey: .archive)
+        renameRules = try c.decodeIfPresent([String: RenameRule].self, forKey: .renameRules) ?? [:]
+        // Before rename rules there was one archive folder: {"archive": {"folder": …, "pattern": …}}.
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        if let a = try legacy.decodeIfPresent(LegacyArchive.self, forKey: .archive), renameRules[a.folder] == nil {
+            renameRules[a.folder] = RenameRule(pattern: a.pattern ?? Renamer.defaultPattern)
+        }
         favorites = try c.decodeIfPresent([String].self, forKey: .favorites) ?? []
         exclude = try c.decodeIfPresent([String].self, forKey: .exclude) ?? []
         aliases = try c.decodeIfPresent([String: [String]].self, forKey: .aliases) ?? [:]
@@ -74,11 +76,11 @@ struct SorterConfig: Codable, Equatable {
 
     /// Checks everything that can be checked without touching the file system. Call at startup and before saving.
     func validate() throws {
-        let relative = favorites + exclude + Array(aliases.keys) + Array(extensionRules.values) + [archive?.folder].compactMap { $0 }
+        let relative = favorites + exclude + Array(aliases.keys) + Array(extensionRules.values) + Array(renameRules.keys)
         if let bad = relative.first(where: { $0.hasPrefix("/") || $0.isEmpty }) { throw SorterConfigError.notRelative(bad) }
-        if let a = archive {
-            do { _ = try Renamer.render(a.pattern, originalName: "x.pdf", isDirectory: false, date: Date()) }
-            catch { throw SorterConfigError.invalidPattern(a.pattern, error.localizedDescription) }
+        for pattern in renameRules.values.map(\.pattern).sorted() {
+            do { _ = try Renamer.render(pattern, originalName: "x.pdf", isDirectory: false, date: Date()) }
+            catch { throw SorterConfigError.invalidPattern(pattern, error.localizedDescription) }
         }
         if let bad = dropApps.first(where: { !$0.hasSuffix(".app") || !($0.hasPrefix("/") || $0.hasPrefix("~/")) }) {
             throw SorterConfigError.notAnAppPath(bad)
@@ -88,11 +90,21 @@ struct SorterConfig: Codable, Equatable {
         if shelf.hideDelayMs < 0 { throw SorterConfigError.negative("shelf.hideDelayMs") }
     }
 
-    /// Rename pattern for items moved to `folder`: the archive pattern inside the archive folder, else none.
-    func renamePattern(forTarget folder: String) -> String? {
-        guard let a = archive, folder == a.folder || folder.hasPrefix(a.folder + "/") else { return nil }
-        return a.pattern
+    /// The rule that applies to `folder`: its own rule, else the closest parent rule that covers subfolders.
+    func renameRule(forTarget folder: String) -> (folder: String, pattern: String)? {
+        let key = renameRules
+            .filter { folder == $0.key || ($0.value.subfolders && folder.hasPrefix($0.key + "/")) }
+            .keys.max { $0.count < $1.count }
+        return key.map { ($0, renameRules[$0]!.pattern) }
     }
+
+    /// Pattern for items moved to `folder`, nil when they keep their names (no rule, or `{original}`).
+    func renamePattern(forTarget folder: String) -> String? {
+        guard let rule = renameRule(forTarget: folder), rule.pattern != Self.keepNamePattern else { return nil }
+        return rule.pattern
+    }
+
+    static let keepNamePattern = "{original}"
 
     var matchRules: MatchRules {
         var ext: [String: String] = [:]
@@ -105,12 +117,50 @@ struct SorterConfig: Codable, Equatable {
     }
 }
 
-// Decoders in extensions keep the memberwise initializers; missing keys take the defaults.
-extension SorterConfig.Archive {
+/// How items moved into one folder are renamed. In the file either just the pattern (covers the
+/// subfolders too) or `{pattern: …, subfolders: false}` for this exact folder only.
+struct RenameRule: Codable, Equatable, ExpressibleByStringLiteral {
+    var pattern: String
+    var subfolders = true
+
+    init(pattern: String, subfolders: Bool = true) {
+        self.pattern = pattern
+        self.subfolders = subfolders
+    }
+
+    init(stringLiteral value: String) { self.init(pattern: value) }
+
+    private enum CodingKeys: String, CodingKey { case pattern, subfolders }
+
     init(from decoder: Decoder) throws {
+        if let pattern = try? decoder.singleValueContainer().decode(String.self) {
+            self.init(pattern: pattern)
+            return
+        }
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        folder = try c.decode(String.self, forKey: .folder)
-        pattern = try c.decodeIfPresent(String.self, forKey: .pattern) ?? Renamer.defaultPattern
+        self.init(pattern: try c.decode(String.self, forKey: .pattern),
+                  subfolders: try c.decodeIfPresent(Bool.self, forKey: .subfolders) ?? true)
+    }
+
+    /// The short form whenever it says the same.
+    func encode(to encoder: Encoder) throws {
+        if subfolders {
+            var c = encoder.singleValueContainer()
+            try c.encode(pattern)
+        } else {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(pattern, forKey: .pattern)
+            try c.encode(subfolders, forKey: .subfolders)
+        }
+    }
+}
+
+// Decoders in extensions keep the memberwise initializers; missing keys take the defaults.
+extension SorterConfig {
+    private enum LegacyKeys: String, CodingKey { case archive }
+    private struct LegacyArchive: Decodable {
+        let folder: String
+        let pattern: String?
     }
 }
 

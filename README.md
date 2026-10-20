@@ -3,8 +3,8 @@
 A macOS shelf for sorting files into an Obsidian vault. The shelf slides in while Finder is the active
 app. Drop files or folders on it and a chooser suggests the target folder from the file names. Type to
 narrow the list, press Return to move, Esc to leave everything where it was. Every subfolder of the
-vault is a target; favorites get their own drop spot on the shelf and move at once. Items moved into
-the archive folder get a date prefix.
+vault is a target; favorites get their own drop spot on the shelf and move at once. Rename rules give
+items moved into chosen folders a date prefix (or any other naming).
 
 Drop Sorter also builds and manages **Drop Mover** apps, standalone drop targets for one fixed folder
 (see [docs/DROP-MOVER.md](docs/DROP-MOVER.md)). Drop Mover used to live in `lab/drop-mover`; its code
@@ -38,7 +38,8 @@ Drop Sorter runs in the background without a Dock icon.
 
 - **Shelf**: slides in at the right screen edge while Finder is the active app and slides away 0.4 s
   after another app becomes active. Launching Drop Sorter again pins it until you click ✕.
-- **Main spot**: opens the chooser. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
+- **Main spot**: opens the chooser. Folders with a rename rule show "rename" and a preview of the new
+  names. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
   the files where they are, ⇥ steps into the selected folder, ↑↓ select.
 - **Favorite spots** (★): dropping there moves at once. The toast offers Undo and Reveal in Finder.
 - **Settings**: gear on the shelf, right-click on the shelf, or the optional menu-bar icon (dropping
@@ -105,9 +106,12 @@ is logged. Saving writes back to the file that was read.
 
 ```yaml
 base: ~/Obsidian/Private
-archive:
-  folder: 90 Archive
-  pattern: "{date}_{time}_{name}{ext}"   # quoted: a value starting with { must be
+renameRules:                             # folder: pattern, also for its subfolders
+  90 Archive: "{date}_{time}_{name}{ext}"   # quoted: a value starting with { must be
+  90 Archive/Keep: "{original}"          # exception: keep names here
+  00 Inbox:                              # this exact folder only
+    pattern: "{date}_{name}{ext}"
+    subfolders: false
 favorites:
   - 00 Inbox
   - 30 Areas/Finance/Invoices
@@ -130,8 +134,12 @@ dropApps:            # managed in Settings › Drop apps
 ```
 
 All folder paths are relative to `base`. Hidden folders (`.obsidian`, `.trash`, `.git`) and packages
-are never targets. The archive pattern uses the Drop Mover tokens (see
-[docs/DROP-MOVER.md](docs/DROP-MOVER.md#rename-pattern)).
+are never targets.
+
+**Rename rules** use the Drop Mover tokens (see [docs/DROP-MOVER.md](docs/DROP-MOVER.md#rename-pattern)).
+A rule applies to its folder and, unless `subfolders: false`, to all folders below it. The most
+specific applicable rule wins; `{original}` keeps the name. Folders without a rule keep names. An old
+`archive: {folder, pattern}` block is still read as one rule and saved as `renameRules`.
 
 The YAML reader is built in (no dependencies) and supports the part of YAML a config file needs:
 mappings, `- ` lists, `[a, b]` and `{a: 1}` on one line, quotes, `#` comments. It refuses anchors,
