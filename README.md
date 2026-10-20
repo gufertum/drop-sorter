@@ -164,8 +164,8 @@ removed. Each word is compared with each folder:
 
 With several items the scores are averaged. A folder is preselected only when it scores at least
 `suggest.minScore` (3) and leads the next one by `suggest.minMargin` (1); otherwise Return does nothing
-until a folder is picked. After typing, each space-separated term must match the path (as substring
-or in order); matches at the start of a path segment rank first.
+until a folder is picked. After typing, each space-separated term must appear in the path as one piece
+(`embr` finds `Cembra`, nothing else); matches at the start of a word rank first.
 
 ## Configuration
 
