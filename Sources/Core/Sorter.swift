@@ -44,8 +44,8 @@ enum Sorter {
     /// Moves everything back (or removes the copies) and takes the history entries back for the items
     /// that made it.
     static func undo(_ outcome: SortOutcome, history: inout History,
-                     removeCopy: (URL) throws -> URL? = Mover.trash) -> MoveResult {
-        let back = Mover.undo(outcome.result, removeCopy: removeCopy)
+                     moveToTrash: (URL) throws -> URL? = Mover.trash) -> MoveResult {
+        let back = Mover.undo(outcome.result, moveToTrash: moveToTrash)
         // Undo reverses the order; each of its moves starts at the earlier destination.
         let returned = Set(back.moves.map(\.source))
         for m in outcome.result.moves where returned.contains(m.destination) {

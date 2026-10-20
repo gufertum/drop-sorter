@@ -14,6 +14,9 @@ final class ShelfPanel: NSPanel {
     var onDrop: (([URL], TransferMode) -> Void)?
     /// A drop on a favorite spot: favorite, items, mode (⌥ or the favorite's own setting). No chooser.
     var onDropFavorite: ((Favorite, [URL], TransferMode) -> Void)?
+    /// A drop on the Trash spot.
+    var onDropTrash: (([URL]) -> Void)?
+    let trashSpot = DropSpot(symbol: "trash", title: "Trash", compact: true, color: .systemGray)
     var onDragOver: ((Bool) -> Void)?
     var onClose: (() -> Void)?
     var onSettings: (() -> Void)?
@@ -79,7 +82,11 @@ final class ShelfPanel: NSPanel {
         favoriteStack.spacing = 6
         favoriteStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = NSStackView(views: [header, spot, favoriteStack])
+        trashSpot.onDrop = { [weak self] urls, _ in self?.onDropTrash?(urls) }
+        trashSpot.onHover = { [weak self] in self?.onDragOver?($0) }
+        trashSpot.translatesAutoresizingMaskIntoConstraints = false
+        let stack = NSStackView(views: [header, spot, favoriteStack, trashSpot])
+        stack.setCustomSpacing(14, after: favoriteStack)  // the Trash stands apart from the favorites
         stack.orientation = .vertical
         stack.spacing = 6
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 10, right: 8)
@@ -96,6 +103,8 @@ final class ShelfPanel: NSPanel {
             spot.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
             spot.heightAnchor.constraint(equalToConstant: 200),
             favoriteStack.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
+            trashSpot.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
+            trashSpot.heightAnchor.constraint(equalToConstant: 44),
         ])
         contentView = glow
         setPinned(false)
@@ -108,6 +117,7 @@ final class ShelfPanel: NSPanel {
         get { spot.enabled }
         set {
             spot.enabled = newValue
+            trashSpot.enabled = newValue
             favoriteSpots.forEach { $0.enabled = newValue && !$0.missing }
         }
     }
@@ -115,6 +125,13 @@ final class ShelfPanel: NSPanel {
     /// One spot per favorite. `missing` folders are shown dimmed and refuse drops.
     /// The favorite spots, for checks.
     var favoriteSpotViews: [DropSpot] { favoriteSpots }
+
+    /// Shows or hides the Trash spot (Settings › Shelf).
+    func setTrash(_ visible: Bool) {
+        trashSpot.isHidden = !visible
+        setContentSize(glow.fittingSize)
+        if isShown { setFrame(shownFrame(), display: true) }
+    }
 
     func setFavorites(_ favorites: [Favorite], missing: Set<String>) {
         favoriteSpots.forEach { $0.removeFromSuperview() }

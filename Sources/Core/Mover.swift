@@ -87,15 +87,15 @@ enum Mover {
     }
 
     /// Reverses an earlier result. Moves go back to their source folders (with the usual "-2" suffix if
-    /// the original name is taken by now). Copies are removed through `removeCopy` (the Trash by
+    /// the original name is taken by now). Copies are removed through `moveToTrash` (the Trash by
     /// default); the originals are not touched. For copies the result's moves are copy -> Trash location.
     static func undo(_ previous: MoveResult, fileManager fm: FileManager = .default,
-                     removeCopy: (URL) throws -> URL? = Mover.trash) -> MoveResult {
+                     moveToTrash: (URL) throws -> URL? = Mover.trash) -> MoveResult {
         var result = MoveResult(mode: previous.mode)
         if previous.mode == .copy {
             for m in previous.moves.reversed() {
                 do {
-                    let gone = try removeCopy(m.destination)
+                    let gone = try moveToTrash(m.destination)
                     result.moves.append(Move(source: m.destination, destination: gone ?? m.destination))
                 } catch {
                     Log.info(String(format: "undo failed for copy '%@': %@", m.destination.path, error.localizedDescription))

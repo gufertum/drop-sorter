@@ -35,6 +35,8 @@ struct SorterConfig: Codable, Equatable {
     struct Shelf: Codable, Equatable {
         var showOnDesktop = true
         var hideDelayMs = 400
+        /// A Trash spot at the bottom of the shelf.
+        var trash = true
     }
 
     /// Folders that take drops; each with all its subfolders unless `subfolders: false`.
@@ -322,5 +324,6 @@ extension SorterConfig.Shelf {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         showOnDesktop = try c.decodeIfPresent(Bool.self, forKey: .showOnDesktop) ?? true
         hideDelayMs = try c.decodeIfPresent(Int.self, forKey: .hideDelayMs) ?? 400
+        trash = try c.decodeIfPresent(Bool.self, forKey: .trash) ?? true
     }
 }

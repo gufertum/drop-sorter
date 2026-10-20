@@ -125,7 +125,7 @@ final class SortService {
     /// Drop Mover template, for the drop app status (current / outdated). Optional for the CLI.
     let template: URL?
     /// Where removed copies go on undo; the Trash, replaced in tests.
-    var removeCopy: (URL) throws -> URL? = Mover.trash
+    var moveToTrash: (URL) throws -> URL? = Mover.trash
 
     /// `DROPSORTER_HOME` or ~/Library/Application Support/li.sudo.dropsorter.
     static var defaultHome: URL {
@@ -316,6 +316,31 @@ final class SortService {
         }
     }
 
+    /// The Trash spot: moves `urls` to the Trash. Recorded in the journal like a move (destination = the
+    /// item in the Trash), so Undo puts everything back where it was. Nothing is learned from it.
+    func trash(_ urls: [URL], source: String, now: Date = Date()) throws -> SortOutcome {
+        guard !urls.isEmpty else { throw ServiceError.invalidInput("Give at least one file or folder.") }
+        return try lock.withLock {
+            var result = MoveResult(mode: .move)
+            for u in urls {
+                do {
+                    let gone = try moveToTrash(u)
+                    result.moves.append(Move(source: u, destination: gone ?? u))
+                } catch {
+                    Log.info(String(format: "could not move '%@' to the Trash: %@", u.path, error.localizedDescription))
+                    result.failures.append((u.lastPathComponent, error.localizedDescription))
+                }
+            }
+            let trashFolder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
+            let outcome = SortOutcome(folder: trashFolder.path, target: trashFolder, result: result, display: Self.trashName)
+            if !result.moves.isEmpty { try journalStore.save(JournalEntry(outcome, source: source, date: now)) }
+            Log.info(String(format: "moved %ld item(s) to the Trash, %ld failure(s)", result.moves.count, result.failures.count))
+            return outcome
+        }
+    }
+
+    static let trashName = "Trash"
+
     /// "Delete Duplicates": moves the items of operation `id` whose content already existed in the target
     /// to the Trash (they are redundant there) and takes them out of the journal, so Undo still works for
     /// the rest. Only while `id` is the most recent operation.
@@ -329,7 +354,7 @@ final class SortService {
             for m in entry.moves {
                 guard let twin = m.identicalTo else { kept.append(m); continue }
                 do {
-                    let gone = try removeCopy(m.destination)
+                    let gone = try moveToTrash(m.destination)
                     removed.append(ItemReport(from: m.destination.path, to: (gone ?? m.destination).path, identicalTo: twin.path))
                     let (base, _) = Tokenizer.baseAndExtension(m.source.lastPathComponent, isDirectory: false)
                     history.forget(tokens: Tokenizer.tokens(base), folder: entry.folder)
@@ -358,7 +383,7 @@ final class SortService {
             if let id, id.uppercased() != entry.id.uuidString { throw ServiceError.staleUndo }
             var history = try historyStore.load()
             let outcome = SortOutcome(id: entry.id, folder: entry.folder, target: URL(fileURLWithPath: "/"), result: entry.result)
-            let back = Sorter.undo(outcome, history: &history, removeCopy: removeCopy)
+            let back = Sorter.undo(outcome, history: &history, moveToTrash: moveToTrash)
             try historyStore.save(history)
             try journalStore.save(nil)
             return UndoReport(id: entry.id.uuidString, mode: entry.mode, folder: entry.display ?? entry.folder,

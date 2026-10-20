@@ -38,6 +38,12 @@ check(Set(five.favoriteSpotViews.map { $0.color }).count == 5, "distinct colours
 check(five.frame.width >= ShelfPanel.width, "shelf at least \(ShelfPanel.width) pt wide: \(five.frame.width)")
 check(ShelfPanel.width >= 300, "shelf width")
 
+// The Trash spot: a drop target of its own (no subview steals the drag), hidden by the setting.
+check(dragThieves(in: five.trashSpot).isEmpty && five.trashSpot.registeredDraggedTypes.contains(.fileURL), "trash spot accepts drops")
+let tallWithTrash = five.frame.height
+five.setTrash(false)
+check(five.trashSpot.isHidden && five.frame.height < tallWithTrash, "trash spot hidden, shelf shorter")
+
 // Settings: in every tab, all table columns fit into the visible width (nothing cut off on the right)
 // and the panes use the full width of the window.
 var cfg = SorterConfig()

@@ -18,7 +18,7 @@ private func sandbox() throws -> (root: URL, service: SortService, downloads: UR
     let trash = root.appendingPathComponent("Trash")
     try fm.createDirectory(at: trash, withIntermediateDirectories: true)
     let service = SortService(home: home)
-    service.removeCopy = { url in
+    service.moveToTrash = { url in
         let d = trash.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
         try fm.moveItem(at: url, to: d)
         return d
