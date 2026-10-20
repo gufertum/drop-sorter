@@ -1,9 +1,12 @@
 import AppKit
 
-/// The drop target at the screen edge. A non-activating panel: dragging onto it and clicking it
-/// leave Finder the active app, so the shelf does not hide itself.
+/// The drop target at the bottom right of the screen. A non-activating panel: dragging onto it and
+/// clicking it leave Finder the active app, so the shelf does not hide itself.
 final class ShelfPanel: NSPanel {
-    static let width: CGFloat = 140
+    /// Width of the visible shelf (without the glow margin).
+    static let width: CGFloat = 200
+    /// Distance of the visible shelf from the right and bottom edge of the usable screen area.
+    static let inset: CGFloat = 24
     /// A drop on the main spot; `.copy` when ⌥ was held.
     var onDrop: (([URL], TransferMode) -> Void)?
     /// A drop on a favorite spot: favorite, items, mode (⌥ or the favorite's own setting). No chooser.
@@ -19,19 +22,21 @@ final class ShelfPanel: NSPanel {
     private let pinLabel = NSTextField(labelWithString: "pinned")
     private var visibleGeneration = 0
     private weak var frameView: NSView?
+    private let glow: GlowContainer
     private(set) var isShown = false
 
     init(menu: NSMenu) {
-        super.init(contentRect: NSRect(origin: .zero, size: NSSize(width: Self.width, height: 156)),
+        let content = NSVisualEffectView()
+        glow = GlowContainer(content: content, cornerRadius: 14)
+        super.init(contentRect: NSRect(origin: .zero, size: NSSize(width: Self.width, height: 200)),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         level = .floating
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false  // the glow replaces the window shadow
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-        let content = NSVisualEffectView()
         content.material = .popover
         content.state = .active
         content.wantsLayer = true
@@ -43,7 +48,7 @@ final class ShelfPanel: NSPanel {
         content.menu = menu
 
         let title = NSTextField(labelWithString: "Drop Sorter")
-        title.font = .systemFont(ofSize: 11, weight: .semibold)
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
         title.textColor = .secondaryLabelColor
         pinLabel.font = .systemFont(ofSize: 9, weight: .medium)
         pinLabel.textColor = .tertiaryLabelColor
@@ -78,6 +83,7 @@ final class ShelfPanel: NSPanel {
         stack.translatesAutoresizingMaskIntoConstraints = false
         spot.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
+        stack.widthAnchor.constraint(equalToConstant: Self.width).isActive = true
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
@@ -85,10 +91,10 @@ final class ShelfPanel: NSPanel {
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -18),
             spot.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
-            spot.heightAnchor.constraint(equalToConstant: 110),
+            spot.heightAnchor.constraint(equalToConstant: 150),
             favoriteStack.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
         ])
-        contentView = content
+        contentView = glow
         setPinned(false)
     }
 
@@ -118,12 +124,11 @@ final class ShelfPanel: NSPanel {
             f.translatesAutoresizingMaskIntoConstraints = false
             favoriteStack.addArrangedSubview(f)
             f.widthAnchor.constraint(equalTo: favoriteStack.widthAnchor).isActive = true
-            f.heightAnchor.constraint(equalToConstant: 30).isActive = true
+            f.heightAnchor.constraint(equalToConstant: 38).isActive = true
             return f
         }
         favoriteStack.isHidden = favoriteSpots.isEmpty
-        let height = contentView?.fittingSize.height ?? 156
-        setContentSize(NSSize(width: Self.width, height: height))
+        setContentSize(glow.fittingSize)
         if isShown { setFrame(shownFrame(), display: true) }
     }
 
@@ -141,8 +146,9 @@ final class ShelfPanel: NSPanel {
     private func shownFrame() -> NSRect {
         let screen = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         let size = frame.size
-        return NSRect(x: screen.maxX - size.width - 8, y: screen.midY - size.height / 2,
-                      width: size.width, height: size.height)
+        // The window includes the glow margin; the visible shelf keeps `inset` from the edges.
+        let pad = Self.inset - glow.margin
+        return NSRect(x: screen.maxX - size.width - pad, y: screen.minY + pad, width: size.width, height: size.height)
     }
 
     /// Draws attention: the frame flashes in the accent colour a few times (first start, relaunch).
@@ -156,6 +162,12 @@ final class ShelfPanel: NSPanel {
         color.toValue = NSColor.controlAccentColor.cgColor
         let group = CAAnimationGroup()
         group.animations = [width, color]
+        let glowPulse = CABasicAnimation(keyPath: "shadowOpacity")
+        glowPulse.toValue = 1
+        glowPulse.duration = 0.45
+        glowPulse.autoreverses = true
+        glowPulse.repeatCount = 3
+        glow.layer?.add(glowPulse, forKey: "pulse")
         group.duration = 0.45
         group.autoreverses = true
         group.repeatCount = 3
@@ -171,7 +183,8 @@ final class ShelfPanel: NSPanel {
         visibleGeneration += 1
         let target = shownFrame()
         if !isVisible {
-            setFrame(target.offsetBy(dx: Self.width + 16, dy: 0), display: false)
+            // Pops up from below the bottom edge.
+            setFrame(target.offsetBy(dx: 0, dy: -(target.height + Self.inset)), display: false)
             alphaValue = 0
             orderFrontRegardless()
         }
@@ -189,7 +202,7 @@ final class ShelfPanel: NSPanel {
         let generation = visibleGeneration
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.18
-            animator().setFrame(frame.offsetBy(dx: Self.width + 16, dy: 0), display: true)
+            animator().setFrame(frame.offsetBy(dx: 0, dy: -(frame.height + Self.inset)), display: true)
             animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             // A slideIn during the animation wins.
@@ -208,20 +221,31 @@ final class DropSpot: NSView {
     var alwaysCopy = false
     var missing = false { didSet { alphaValue = missing ? 0.4 : 1 } }
     private let compact: Bool
-    private var highlighted = false { didSet { needsDisplay = true } }
+    private var highlighted = false {
+        didSet {
+            needsDisplay = true
+            // A glow around the spot while files hover over it.
+            layer?.shadowColor = NSColor.controlAccentColor.cgColor
+            layer?.shadowOpacity = highlighted ? 0.9 : 0
+        }
+    }
 
     init(symbol: String, title: String, compact: Bool = false) {
         self.compact = compact
         super.init(frame: .zero)
         registerForDraggedTypes([.fileURL])
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowOffset = .zero
+        layer?.shadowRadius = 8
         let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!)
-        icon.symbolConfiguration = .init(pointSize: compact ? 11 : 30, weight: compact ? .regular : .light)
+        icon.symbolConfiguration = .init(pointSize: compact ? 14 : 40, weight: compact ? .regular : .light)
         icon.contentTintColor = compact ? .systemYellow : .controlAccentColor
         // NSImageView registers itself for file drags; over the icon it would take the drag away from
         // the spot (highlight off, drop lost). Only the spot itself is a drop target.
         icon.unregisterDraggedTypes()
         let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 11, weight: compact ? .medium : .regular)
+        label.font = .systemFont(ofSize: compact ? 12 : 13, weight: compact ? .medium : .regular)
         label.textColor = compact ? .labelColor : .secondaryLabelColor
         label.lineBreakMode = .byTruncatingHead
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
