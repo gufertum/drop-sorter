@@ -6,6 +6,8 @@ import AppKit
 final class GlowContainer: NSView {
     let margin: CGFloat
     private let cornerRadius: CGFloat
+    /// Accent colour by default; red for error toasts.
+    var color: NSColor = .controlAccentColor { didSet { layer?.shadowColor = color.cgColor } }
 
     init(content: NSView, margin: CGFloat = 16, cornerRadius: CGFloat) {
         self.margin = margin
@@ -29,7 +31,7 @@ final class GlowContainer: NSView {
 
     /// 0 = no glow, 1 = full.
     func setGlow(_ opacity: Float) {
-        layer?.shadowColor = NSColor.controlAccentColor.cgColor
+        layer?.shadowColor = color.cgColor
         layer?.shadowOpacity = opacity
     }
 
@@ -42,6 +44,6 @@ final class GlowContainer: NSView {
     /// Accent colour may change in System Settings while the app runs.
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        layer?.shadowColor = NSColor.controlAccentColor.cgColor
+        layer?.shadowColor = color.cgColor
     }
 }
