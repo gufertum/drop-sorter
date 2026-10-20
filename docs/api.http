@@ -1,0 +1,52 @@
+# Drop Sorter REST API v1 (httpyac / VS Code REST Client).
+# Turn it on in Settings › General › API (or run `dropsorter serve`), then "Copy Token" and put it
+# into the variable below. Never commit a real token.
+@base = http://127.0.0.1:47800/v1
+@token = {{$processEnv DROPSORTER_TOKEN}}
+
+### Health (no token needed)
+GET {{base}}/health
+
+### Target folders, optionally filtered like the chooser
+GET {{base}}/folders?q=fin%20inv
+Authorization: Bearer {{token}}
+
+### Suggest a folder for names or paths
+POST {{base}}/suggest
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"names": ["Rechnung_Swisscom_2026-09.pdf", "Scans/"], "limit": 5}
+
+### Preview a move (nothing is touched)
+POST {{base}}/sort
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"paths": ["/Users/me/Downloads/invoice-acme.pdf"], "auto": true, "dryRun": true}
+
+### Copy into an explicit folder
+POST {{base}}/sort
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"paths": ["/Users/me/Desktop/contract.pdf"], "folder": "80 Backup", "mode": "copy"}
+
+### What undo would revert
+GET {{base}}/last
+Authorization: Bearer {{token}}
+
+### Undo the most recent operation (optionally only if it is still operation "id")
+POST {{base}}/undo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+### Configuration (read only)
+GET {{base}}/config
+Authorization: Bearer {{token}}
+
+### Drop apps
+GET {{base}}/drop-apps
+Authorization: Bearer {{token}}

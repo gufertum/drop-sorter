@@ -32,8 +32,17 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private var dropInfos: [DropAppInfo] = []
     private let dropNote = NSTextField(wrappingLabelWithString: "")
 
-    init(config: SorterConfig, configPath: String, historyWords: Int, dropApps: DropAppManager) {
+    private let apiToken: APIToken
+    private let apiStatus: () -> String
+    private let apiCheck = NSButton(checkboxWithTitle: "Enable the REST API (127.0.0.1 only, bearer token)", target: nil, action: nil)
+    private let apiPortField = NSTextField()
+    private let apiStatusLabel = NSTextField(labelWithString: "")
+
+    init(config: SorterConfig, configPath: String, historyWords: Int, dropApps: DropAppManager,
+         apiToken: APIToken, apiStatus: @escaping () -> String) {
         self.dropApps = dropApps
+        self.apiToken = apiToken
+        self.apiStatus = apiStatus
         self.config = config
         self.configPath = configPath
         self.historyWords = historyWords
@@ -141,6 +150,21 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         cliLabel.font = .systemFont(ofSize: 11)
         cliLabel.textColor = .secondaryLabelColor
         let cliRow = NSStackView(views: [button("Install Command Line Tool", #selector(installCLI)), cliLabel])
+        apiCheck.target = self
+        apiCheck.action = #selector(apiToggled)
+        let portFormat = NumberFormatter()
+        portFormat.minimum = 1024
+        portFormat.maximum = 65535
+        portFormat.allowsFloats = false
+        portFormat.usesGroupingSeparator = false
+        apiPortField.formatter = portFormat
+        apiPortField.delegate = self
+        apiPortField.alignment = .right
+        apiPortField.widthAnchor.constraint(equalToConstant: 70).isActive = true
+        apiStatusLabel.font = .systemFont(ofSize: 11)
+        apiStatusLabel.textColor = .secondaryLabelColor
+        let apiRow = NSStackView(views: [NSTextField(labelWithString: "Port"), apiPortField,
+                                         button("Copy Token", #selector(copyToken)), button("New Token", #selector(newToken)), apiStatusLabel])
 
         errorLabel.textColor = .systemRed
         errorLabel.font = .systemFont(ofSize: 11)
@@ -179,6 +203,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder."),
             heading("Shelf"), desktopCheck, delayRow,
             heading("General"), menuBarCheck, loginCheck, loginNote, historyRow, cliRow,
+            heading("API"), apiCheck, apiRow,
+            small("Sort, suggest, undo and read the configuration over HTTP on this Mac only. Every request needs the header \"Authorization: Bearer <token>\". The API cannot change settings. Same commands as dropsorter and its MCP server."),
         ]
         let favorites: [NSView] = [
             heading("Favorites"), favScroll, favoriteButtons,
@@ -199,7 +225,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             return stack
         }
         let tabs = NSTabView()
-        for (title, view) in [("General", pane(general, [2, 7, 10])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
+        for (title, view) in [("General", pane(general, [2, 7, 10, 16])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
             let item = NSTabViewItem(identifier: title)
             item.label = title
             item.view = view
@@ -246,6 +272,9 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         dropTable.reloadData()
         let pending = dropInfos.filter(\.needsUpdate).count
         dropNote.stringValue = pending == 0 ? "" : "\(pending) app\(pending == 1 ? "" : "s") can be updated or adopted."
+        apiCheck.state = config.api.enabled ? .on : .off
+        apiPortField.integerValue = config.api.port
+        apiStatusLabel.stringValue = apiStatus()
         cliLabel.stringValue = Self.cliLink.map { "dropsorter → \($0.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" }
             ?? "Links dropsorter into ~/.local/bin"
         historyLabel.stringValue = "Learned from earlier moves: \(historyWords) word\(historyWords == 1 ? "" : "s")"
@@ -371,6 +400,10 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             }
             commit { $0.renameRules[folder]?.pattern = pattern }
         }
+        if (obj.object as? NSTextField) === apiPortField {
+            let port = apiPortField.integerValue
+            if (1024...65535).contains(port) { commit { $0.api.port = port } } else { refresh() }
+        }
         if (obj.object as? NSTextField) === delayField {
             let ms = max(0, delayField.integerValue)
             commit { $0.shelf.hideDelayMs = ms }
@@ -418,6 +451,37 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         refresh()
     }
 
+    // MARK: API
+
+    @objc private func apiToggled() { commit { $0.api.enabled = apiCheck.state == .on } }
+
+    @objc private func copyToken() {
+        do {
+            let token = try apiToken.load()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(token, forType: .string)
+            errorLabel.stringValue = ""
+            apiStatusLabel.stringValue = "Token copied. \(apiStatus())"
+        } catch {
+            errorLabel.stringValue = "Token: \(error.localizedDescription)"
+        }
+    }
+
+    @objc private func newToken() {
+        let a = NSAlert()
+        a.messageText = "Create a new API token?"
+        a.informativeText = "Scripts and tools using the current token stop working until they get the new one."
+        a.addButton(withTitle: "New Token")
+        a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try apiToken.regenerate()
+            copyToken()
+        } catch {
+            errorLabel.stringValue = "Token: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: Command line tool
 
     static let cliLinkURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/dropsorter")
@@ -430,7 +494,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     /// Links (or relinks) ~/.local/bin/dropsorter to the tool inside this app. Never replaces a real file.
     @objc private func installCLI() {
         let fm = FileManager.default
-        let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/dropsorter")
+        let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/dropsorter")
         let link = Self.cliLinkURL
         do {
             try fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)

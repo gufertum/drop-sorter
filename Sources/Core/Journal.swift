@@ -23,3 +23,14 @@ struct JournalEntry: Codable, Equatable {
     var result: MoveResult { MoveResult(mode: mode, moves: moves, failures: []) }
 }
 
+/// `{"operation": …}` for MCP and REST; always has the key, `null` when there is nothing to undo.
+struct LastOperationReport: Encodable {
+    let operation: JournalEntry?
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Key.self)
+        try c.encode(operation, forKey: .operation)
+    }
+    private enum Key: String, CodingKey { case operation }
+}
+

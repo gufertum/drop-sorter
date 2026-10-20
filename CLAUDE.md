@@ -12,7 +12,8 @@ Original concept (written for an Obsidian vault, before the app became general p
 
 - `Sources/Core/` Foundation only, shared by both apps and the tests: Renamer, Mover, Tokenizer,
   Matcher, FolderIndex, History, JSONStore, SorterConfig, SorterConfigStore, YAML, DropMoverConfig,
-  ShelfVisibility, ChooserModel, Sorter, ShelfLabels, SortService, Journal, FileLock, CLI.
+  ShelfVisibility, ChooserModel, Sorter, ShelfLabels, SortService, Journal, FileLock, CLI, MCPServer,
+  RESTRouter (+ APIToken), HTTPServer (Network.framework, loopback only).
 - `Sources/DropMover/` Drop Mover app (AppKit). `Resources/DropMover/Info.plist`.
 - `Sources/DropSorter/` Drop Sorter agent app: FrontmostWatcher, ShelfPanel (main and favorite spots),
   ChooserPanel, SortToast, SettingsWindow, MenuBarItem, main.
@@ -51,6 +52,10 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
   `Contents/Resources/DropMoverTemplate` (no `.app`, so Launch Services ignores it). A copy is current
   when its executable equals the template's byte for byte; update replaces the bundle, keeps
   `config.json`, trashes the old bundle and puts it back if the swap fails. Tests use a fake trash.
+- **APFS is case-insensitive**: the CLI lives in `Contents/Helpers/dropsorter`, never next to
+  `Contents/MacOS/DropSorter` (same name ignoring case; build.sh checks it).
+- **REST API security**: bind 127.0.0.1 only, bearer token (constant-time compare), Host header must be
+  a loopback name, size limits, no route changes the configuration. Keep it that way.
 - **One engine**: `SortService` serves the app, the CLI, MCP and REST. It re-reads the config per call,
   updates history and the undo journal (`journal.json`, only the last operation) under `FileLock`,
   and never changes the configuration. New sort/undo behaviour goes there, not into a front end.

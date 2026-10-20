@@ -124,7 +124,7 @@ final class MCPServer {
             case "undo_last":
                 value = try service.undo(id: try string(args, "id"))
             case "last_operation":
-                value = OptionalBox(value: try service.lastOperation())
+                value = LastOperationReport(operation: try service.lastOperation())
             case "get_config":
                 value = try service.config()
             default:
@@ -179,16 +179,6 @@ final class MCPServer {
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data("{}".utf8)
         return String(decoding: data, as: UTF8.self)
     }
-}
-
-/// `last_operation` returns an object even when there is none: {"operation": null}.
-private struct OptionalBox: Encodable {
-    let value: JournalEntry?
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: Key.self)
-        try c.encode(value, forKey: .operation)
-    }
-    enum Key: String, CodingKey { case operation }
 }
 
 /// structuredContent must be an object, so the list gets a key.
