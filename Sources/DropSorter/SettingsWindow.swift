@@ -27,6 +27,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let historyLabel = NSTextField(labelWithString: "")
     private let cliLabel = NSTextField(labelWithString: "")
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
+    private let welcomeBox = NSBox()
+    private let tabs = NSTabView()
     private let dropTable = NSTableView()
     private let dropApps: DropAppManager
     private var dropInfos: [DropAppInfo] = []
@@ -57,7 +59,10 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func show() {
+    /// `welcome`: first run, with a note on where the shelf is and what to do first.
+    func show(welcome: Bool = false) {
+        welcomeBox.isHidden = !welcome
+        if welcome { tabs.selectTabViewItem(at: 0) }
         refresh()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
@@ -224,7 +229,6 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             }
             return stack
         }
-        let tabs = NSTabView()
         for (title, view) in [("General", pane(general, [2, 7, 10, 16])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
             let item = NSTabViewItem(identifier: title)
             item.label = title
@@ -233,7 +237,18 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
 
         let footer = small("Saved on every change to \(configPath). The file is rewritten without comments; a hand-written config.yaml is kept once as config.yaml.bak.")
-        let stack = NSStackView(views: [tabs, errorLabel, footer])
+        let welcomeText = NSTextField(wrappingLabelWithString: "Welcome to Drop Sorter. The shelf sits at the right edge of your screen and slides in whenever Finder is the active app: drop files on it and pick the folder they belong in. Start by choosing your base folder below; every folder inside it becomes a target. Launch Drop Sorter again any time to bring the shelf back.")
+        welcomeText.font = .systemFont(ofSize: 12)
+        welcomeBox.boxType = .custom
+        welcomeBox.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.12)
+        welcomeBox.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.6)
+        welcomeBox.borderWidth = 1
+        welcomeBox.cornerRadius = 8
+        welcomeBox.titlePosition = .noTitle
+        welcomeBox.contentViewMargins = NSSize(width: 12, height: 10)
+        welcomeBox.contentView = welcomeText
+        welcomeBox.isHidden = true
+        let stack = NSStackView(views: [welcomeBox, tabs, errorLabel, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -249,6 +264,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             stack.widthAnchor.constraint(equalToConstant: 700),
             tabs.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            welcomeBox.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             errorLabel.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             favScroll.heightAnchor.constraint(equalToConstant: 110),
