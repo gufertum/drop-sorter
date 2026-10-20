@@ -77,7 +77,7 @@ func sorterTests() throws {
     try touch(downloads.appendingPathComponent("Old Notes/a.md"))
 
     var config = SorterConfig()
-    config.archive = .init(folder: "90 Archive", pattern: "{date:yyyy}_{name}{ext}")
+    config.renameRules = ["90 Archive": "{date:yyyy}_{name}{ext}", "30 Areas/Finance": "{date:MM}_{name}{ext}"]
     var history = History()
     let items = Sorter.dropItems([downloads.appendingPathComponent("invoice-hetzner.pdf"), downloads.appendingPathComponent("Old Notes")])
     eq(items.map(\.isDirectory), [false, true])
@@ -85,11 +85,12 @@ func sorterTests() throws {
     let now = Date(timeIntervalSince1970: 1_791_590_400)
     let inv = Sorter.sort([downloads.appendingPathComponent("invoice-hetzner.pdf")], into: "30 Areas/Finance/Invoices",
                           base: base, config: config, history: &history, now: now)
-    eq(inv.result.moved.map(\.lastPathComponent), ["invoice-hetzner.pdf"])
+    // Any folder can have a rule; this one comes from its parent "30 Areas/Finance".
+    eq(inv.result.moved.map(\.lastPathComponent), ["10_invoice-hetzner.pdf"])
     eq(history.count("hetzner", "30 Areas/Finance/Invoices"), 1)
     eq(history.count("invoice", "30 Areas/Finance/Invoices"), 1)
 
-    // Archive: renamed with the archive pattern, folders too.
+    // Folders are renamed too (only the top-level name).
     let arch = Sorter.sort([downloads.appendingPathComponent("Old Notes")], into: "90 Archive",
                            base: base, config: config, history: &history, now: now)
     eq(arch.result.moved.map(\.lastPathComponent), ["2026_Old Notes"])
@@ -97,7 +98,7 @@ func sorterTests() throws {
 
     // Undo puts the files back and takes the history entries back.
     eq(Sorter.undo(inv, history: &history).failures.count, 0)
-    check(fm.fileExists(atPath: downloads.appendingPathComponent("invoice-hetzner.pdf").path), "undo restored file")
+    check(fm.fileExists(atPath: downloads.appendingPathComponent("invoice-hetzner.pdf").path), "undo restored the original name")
     eq(history.count("hetzner", "30 Areas/Finance/Invoices"), 0)
     eq(history.counts["hetzner"] == nil, true)
     eq(history.count("notes", "90 Archive"), 1)

@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 
-/// Settings: vault, archive, shelf, menu-bar icon, open at login, learned history (General tab);
+/// Settings: vault, rename rules, shelf, menu-bar icon, open at login, learned history (General tab);
 /// favorites and Drop Mover apps (second tab).
 /// Every change is saved at once through `onChange`, which returns an error text when it was refused.
 final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
@@ -14,9 +14,9 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private var historyWords: Int
 
     private let vaultLabel = NSTextField(labelWithString: "")
-    private let archiveLabel = NSTextField(labelWithString: "")
-    private let patternField = NSTextField()
-    private let patternPreview = NSTextField(labelWithString: "")
+    private let ruleTable = NSTableView()
+    /// Rename rules sorted by folder, so parents come before their subfolders.
+    private var rules: [(folder: String, rule: RenameRule)] = []
     private let favoritesTable = NSTableView()
     private let favoriteButtons = NSSegmentedControl()
     private let desktopCheck = NSButton(checkboxWithTitle: "Also show it on the bare desktop (no Finder window open)", target: nil, action: nil)
@@ -71,20 +71,30 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
         let button = { (title: String, action: Selector) -> NSButton in NSButton(title: title, target: self, action: action) }
 
-        for l in [vaultLabel, archiveLabel] {
+        for l in [vaultLabel] {
             l.lineBreakMode = .byTruncatingMiddle
             l.isSelectable = true
             l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
         let vaultRow = NSStackView(views: [vaultLabel, button("Choose…", #selector(chooseVault)), button("Show in Finder", #selector(showVault))])
-        let archiveRow = NSStackView(views: [archiveLabel, button("Choose…", #selector(chooseArchive)), button("None", #selector(clearArchive))])
-
-        patternField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        patternField.placeholderString = Renamer.defaultPattern
-        patternField.delegate = self
-        let patternRow = NSStackView(views: [patternField, button("Default", #selector(resetPattern))])
-        patternPreview.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        patternPreview.lineBreakMode = .byTruncatingMiddle
+        for (id, title, width) in [("folder", "Folder", 170.0), ("subfolders", "Subfolders", 70.0), ("pattern", "Pattern", 190.0), ("example", "Example", 200.0)] {
+            let c = NSTableColumn(identifier: .init(id))
+            c.title = title
+            c.width = width
+            ruleTable.addTableColumn(c)
+        }
+        ruleTable.dataSource = self
+        ruleTable.delegate = self
+        ruleTable.usesAlternatingRowBackgroundColors = true
+        let ruleScroll = NSScrollView()
+        ruleScroll.documentView = ruleTable
+        ruleScroll.hasVerticalScroller = true
+        ruleScroll.borderType = .bezelBorder
+        ruleScroll.heightAnchor.constraint(equalToConstant: 110).isActive = true
+        let ruleButtons = NSStackView(views: [
+            button("Add Folder…", #selector(addRule)), button("Remove", #selector(removeRule)),
+            button("Date Prefix", #selector(setRuleDefault)), button("Keep Names", #selector(setRuleKeep)),
+        ])
 
         let column = NSTableColumn(identifier: .init("path"))
         favoritesTable.addTableColumn(column)
@@ -158,8 +168,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
 
         let general: [NSView] = [
             heading("Vault"), vaultRow, small("Every subfolder is a target. Hidden folders and packages are skipped."),
-            heading("Archive"), archiveRow, patternRow, patternPreview,
-            small("Items moved into the archive folder or its subfolders are renamed. Tokens: " + Renamer.tokenHelp),
+            heading("Rename rules"), ruleScroll, ruleButtons,
+            small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder."),
             heading("Shelf"), desktopCheck, delayRow,
             heading("General"), menuBarCheck, loginCheck, loginNote, historyRow,
         ]
@@ -176,7 +186,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             stack.spacing = 6
             gapsAfter.forEach { stack.setCustomSpacing(16, after: views[$0]) }
             stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-            for v in views where v is NSScrollView || v is NSStackView || (v as? NSTextField)?.font?.pointSize == 11 || v === self.patternPreview {
+            for v in views where v is NSScrollView || v is NSStackView || (v as? NSTextField)?.font?.pointSize == 11 {
                 v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24).isActive = true
             }
             return stack
@@ -218,11 +228,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private func refresh() {
         vaultLabel.stringValue = config.base ?? "— not set —"
         vaultLabel.textColor = config.base == nil ? .systemRed : .labelColor
-        archiveLabel.stringValue = config.archive?.folder ?? "— none: nothing is renamed —"
-        archiveLabel.textColor = config.archive == nil ? .secondaryLabelColor : .labelColor
-        patternField.stringValue = config.archive?.pattern ?? Renamer.defaultPattern
-        patternField.isEnabled = config.archive != nil
-        updatePreview()
+        rules = config.renameRules.map { (folder: $0.key, rule: $0.value) }.sorted { $0.folder < $1.folder }
+        ruleTable.reloadData()
         favoritesTable.reloadData()
         desktopCheck.state = config.shelf.showOnDesktop ? .on : .off
         delayField.integerValue = config.shelf.hideDelayMs
@@ -235,16 +242,14 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         historyLabel.stringValue = "Learned from earlier moves: \(historyWords) word\(historyWords == 1 ? "" : "s")"
     }
 
-    private func updatePreview() {
-        let pattern = patternField.stringValue
+    /// "invoice.pdf → 2026-10-20_…_invoice.pdf" for one pattern, or the error.
+    static func example(_ pattern: String) -> (String, NSColor) {
+        if pattern == SorterConfig.keepNamePattern { return ("names are kept", .secondaryLabelColor) }
         do {
             let file = try Renamer.render(pattern, originalName: "invoice.pdf", isDirectory: false, date: Date())
-            let dir = try Renamer.render(pattern, originalName: "Scans", isDirectory: true, date: Date())
-            patternPreview.stringValue = "invoice.pdf → \(file)    Scans/ → \(dir)/"
-            patternPreview.textColor = .secondaryLabelColor
+            return ("invoice.pdf → \(file)", .secondaryLabelColor)
         } catch {
-            patternPreview.stringValue = error.localizedDescription
-            patternPreview.textColor = .systemRed
+            return (error.localizedDescription, .systemRed)
         }
     }
 
@@ -304,32 +309,59 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         if let baseURL { NSWorkspace.shared.open(baseURL) }
     }
 
-    @objc private func chooseArchive() {
-        guard let rel = chooseFolderInVault(prompt: "Use as Archive", message: "Items moved here are renamed with the archive pattern.") else { return }
-        commit { $0.archive = .init(folder: rel, pattern: $0.archive?.pattern ?? Renamer.defaultPattern) }
+    // MARK: Rename rules
+
+    @objc private func addRule() {
+        guard let rel = chooseFolderInVault(prompt: "Add Rule", message: "Items moved into this folder (and its subfolders) are renamed.") else { return }
+        guard config.renameRules[rel] == nil else { errorLabel.stringValue = "\(rel) already has a rule."; return }
+        commit { $0.renameRules[rel] = RenameRule(pattern: Renamer.defaultPattern) }
+        if let row = rules.firstIndex(where: { $0.folder == rel }) { ruleTable.selectRowIndexes([row], byExtendingSelection: false) }
     }
 
-    @objc private func clearArchive() { commit { $0.archive = nil } }
-
-    @objc private func resetPattern() {
-        patternField.stringValue = Renamer.defaultPattern
-        commitPattern()
+    @objc private func removeRule() {
+        let row = ruleTable.selectedRow
+        guard row >= 0 else { errorLabel.stringValue = "Select a rule first."; return }
+        let folder = rules[row].folder
+        commit { $0.renameRules[folder] = nil }
     }
 
-    private func commitPattern() {
-        updatePreview()
-        let pattern = patternField.stringValue
-        guard config.archive != nil,
-              (try? Renamer.render(pattern, originalName: "x.pdf", isDirectory: false, date: Date())) != nil else { return }
-        commit { $0.archive?.pattern = pattern }
+    @objc private func setRuleDefault() { setSelectedRule(Renamer.defaultPattern) }
+    @objc private func setRuleKeep() { setSelectedRule(SorterConfig.keepNamePattern) }
+
+    private func setSelectedRule(_ pattern: String) {
+        let row = ruleTable.selectedRow
+        guard row >= 0 else { errorLabel.stringValue = "Select a rule first."; return }
+        let folder = rules[row].folder
+        commit { $0.renameRules[folder]?.pattern = pattern }
+        ruleTable.selectRowIndexes([row], byExtendingSelection: false)
     }
+
+    @objc private func subfoldersToggled(_ sender: NSButton) {
+        guard rules.indices.contains(sender.tag) else { return }
+        let folder = rules[sender.tag].folder
+        commit { $0.renameRules[folder]?.subfolders = sender.state == .on }
+    }
+
+    private static let rulePatternID = NSUserInterfaceItemIdentifier("rulePattern")
 
     func controlTextDidChange(_ obj: Notification) {
-        if (obj.object as? NSTextField) === patternField { updatePreview() }
+        // Live example while a rule pattern is edited.
+        guard let field = obj.object as? NSTextField, field.identifier == Self.rulePatternID,
+              let example = ruleTable.view(atColumn: 3, row: field.tag, makeIfNecessary: false) as? NSTextField else { return }
+        (example.stringValue, example.textColor) = Self.example(field.stringValue)
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        if (obj.object as? NSTextField) === patternField { commitPattern() }
+        if let field = obj.object as? NSTextField, field.identifier == Self.rulePatternID, rules.indices.contains(field.tag) {
+            let folder = rules[field.tag].folder
+            let pattern = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if (try? Renamer.render(pattern, originalName: "x.pdf", isDirectory: false, date: Date())) == nil {
+                errorLabel.stringValue = "Pattern for \(folder) not saved: \(Self.example(pattern).0)"
+                refresh()
+                return
+            }
+            commit { $0.renameRules[folder]?.pattern = pattern }
+        }
         if (obj.object as? NSTextField) === delayField {
             let ms = max(0, delayField.integerValue)
             commit { $0.shelf.hideDelayMs = ms }
@@ -402,11 +434,13 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     // MARK: Favorites table
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        tableView === dropTable ? dropInfos.count : config.favorites.count
+        if tableView === ruleTable { return rules.count }
+        return tableView === dropTable ? dropInfos.count : config.favorites.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if tableView === dropTable { return dropCell(dropInfos[row], column: tableColumn?.identifier.rawValue ?? "") }
+        if tableView === ruleTable { return ruleCell(row, column: tableColumn?.identifier.rawValue ?? "") }
         let path = config.favorites[row]
         let label = NSTextField(labelWithString: path)
         label.lineBreakMode = .byTruncatingMiddle
@@ -415,6 +449,42 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             label.textColor = .systemRed
         }
         return label
+    }
+
+    private func ruleCell(_ row: Int, column: String) -> NSView {
+        let (folder, rule) = rules[row]
+        switch column {
+        case "subfolders":
+            let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(subfoldersToggled(_:)))
+            check.state = rule.subfolders ? .on : .off
+            check.tag = row
+            check.toolTip = "On: also renames in subfolders (unless they have their own rule). Off: only this exact folder."
+            return check
+        case "pattern":
+            let field = NSTextField(string: rule.pattern)
+            field.identifier = Self.rulePatternID
+            field.tag = row
+            field.isBordered = false
+            field.drawsBackground = false
+            field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            field.delegate = self
+            return field
+        case "example":
+            let (text, color) = Self.example(rule.pattern)
+            let label = NSTextField(labelWithString: text)
+            label.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            label.textColor = color
+            label.lineBreakMode = .byTruncatingMiddle
+            return label
+        default:
+            let label = NSTextField(labelWithString: folder)
+            label.lineBreakMode = .byTruncatingMiddle
+            if let base = baseURL, !FileManager.default.fileExists(atPath: base.appendingPathComponent(folder).path) {
+                label.stringValue = folder + "  (not found)"
+                label.textColor = .systemRed
+            }
+            return label
+        }
     }
 
     // MARK: Drop apps
@@ -460,7 +530,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         guard save.runModal() == .OK, let url = save.url else { return }
 
         let rel = baseURL.flatMap { FolderIndex.relativePath(of: target, in: $0) }
-        let pattern = rel.flatMap { config.renamePattern(forTarget: $0) } ?? Renamer.defaultPattern
+        // Same naming as a drop on that folder in Drop Sorter; changeable later in the drop app's window.
+        let pattern = rel.flatMap { config.renamePattern(forTarget: $0) } ?? SorterConfig.keepNamePattern
         do {
             try dropApps.create(at: url, target: target, pattern: pattern)
             errorLabel.stringValue = ""

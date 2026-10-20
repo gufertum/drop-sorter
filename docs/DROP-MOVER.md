@@ -29,8 +29,8 @@ Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, App
 ## Create a copy
 
 Use Drop Sorter: Settings › Favorites & Drop Apps › **New…** asks for the target folder and where to
-put the app. It validates both, never overwrites an existing app, applies the archive pattern when
-the target is in the archive, and draws the labelled icon. **Find…** lists existing copies (also old
+put the app. It validates both, never overwrites an existing app, takes the pattern from Drop Sorter's
+rename rule for the target (no rule: names are kept, `{original}`), and draws the labelled icon. **Find…** lists existing copies (also old
 ones with the bundle id `io.schaedler.dropmover`), **Update** / **Update All** replace them with the
 current build while keeping each copy's `config.json`. The old bundle goes to the Trash.
 

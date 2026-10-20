@@ -78,7 +78,8 @@ func yamlTests() throws {
     // Writer: round trip, quoting only where needed.
     var c = SorterConfig()
     c.base = "~/Obsidian/Private"
-    c.archive = .init(folder: "90 Archive", pattern: Renamer.defaultPattern)
+    c.renameRules = ["90 Archive": RenameRule(pattern: Renamer.defaultPattern), "90 Archive/Keep": "{original}",
+                     "00 Inbox": RenameRule(pattern: "{date}_{name}{ext}", subfolders: false)]
     c.favorites = ["00 Inbox", "2026", "true", "- dash", "a: b", " pad"]
     c.aliases = ["30 Areas/Finance/Invoices": ["rechnung", "bill"]]
     c.extensionRules = ["heic jpg": "50 Attachments/Images"]
@@ -86,7 +87,7 @@ func yamlTests() throws {
     c.menuBarIcon = true
     let text = try YAML.encode(c, keyOrder: SorterConfigStore.keyOrder)
     eq(try YAML.decode(SorterConfig.self, from: text), c)
-    check(text.hasPrefix("base: ~/Obsidian/Private\narchive:\n  folder: 90 Archive\n  pattern: \"{date}"), "key order and plain scalars:\n\(text)")
+    check(text.hasPrefix("base: ~/Obsidian/Private\nrenameRules:\n  00 Inbox:\n    pattern: \"{date}_{name}{ext}\"\n    subfolders: false\n  90 Archive: \"{date}_{time}_{name}{ext}\"\n  90 Archive/Keep: \"{original}\"\n"), "key order and plain scalars:\n\(text)")
     check(text.contains("  - \"2026\"\n  - \"true\"\n  - \"- dash\"\n  - \"a: b\"\n  - \" pad\"\n"), "quoted where needed:\n\(text)")
     check(text.contains("exclude: []\n"), "empty list inline")
     eq(try YAML.encode(["k": [["a": [1], "b": [2, 3]]]]), "k:\n  - a:\n      - 1\n    b:\n      - 2\n      - 3\n")
@@ -130,6 +131,7 @@ func sorterConfigStoreTests() throws {
     eq(reason("favorites:\n  - 2026\n"), "favorites[0]: expected text (quote values such as 2026 or true to keep them as text)")
     eq(reason("menuBarIcon: yes\n"), "menuBarIcon: expected true or false")
     eq(reason("archive:\n  pattern: x\n"), "archive: missing key 'folder'")
+    eq(reason("renameRules:\n  90 Archive: \"{nope}\"\n"), SorterConfigError.invalidPattern("{nope}", "Unknown token {nope}.").errorDescription!)
     eq(reason("base: [\n"), "YAML line 1: unterminated flow collection (it must close on the same line)")
     eq(reason("favorites: [/abs]\n"), SorterConfigError.notRelative("/abs").errorDescription!)
     eq(try String(contentsOf: store.yamlURL, encoding: .utf8), "favorites: [/abs]\n")
