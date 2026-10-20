@@ -18,6 +18,8 @@ let suites: [(String, () throws -> Void)] = [
     ("ShelfLabels", shelfLabelTests),
     ("ChooserModel", chooserModelTests),
     ("Sorter", sorterTests),
+    ("Identical", identicalTests),
+    ("IdenticalService", identicalServiceTests),
     ("DropApps", dropAppTests),
     ("CLI", cliTests),
     ("MCP", mcpTests),

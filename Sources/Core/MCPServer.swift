@@ -36,6 +36,7 @@ final class MCPServer {
                           "folder": ["type": "string", "description": "Target folder relative to the base folder."],
                           "auto": ["type": "boolean", "description": "Use the clear suggestion instead of 'folder'."],
                           "mode": ["type": "string", "enum": ["move", "copy"], "description": "Default move."],
+                          "identical": ["type": "string", "enum": ["keep", "skip"], "description": "Items whose content already exists in the target folder (by hash): keep = move/copy anyway under a distinct name and report identicalTo (default); skip = leave them in place."],
                           "dry_run": ["type": "boolean", "description": "Only report the resulting names."]],
              required: ["paths"], readOnly: false, destructive: false),
         Tool(name: "undo_last",
@@ -119,7 +120,10 @@ final class MCPServer {
                 guard (folder != nil) != auto else { throw ServiceError.invalidInput("Give either 'folder' or auto=true.") }
                 let modeText = try string(args, "mode") ?? "move"
                 guard let mode = TransferMode(rawValue: modeText) else { throw ServiceError.invalidInput("mode must be 'move' or 'copy'.") }
-                value = try service.sort(try strings(args, "paths"), into: folder, mode: mode,
+                guard let identical = IdenticalPolicy(rawValue: try string(args, "identical") ?? "keep") else {
+                    throw ServiceError.invalidInput("identical must be 'keep' or 'skip'.")
+                }
+                value = try service.sort(try strings(args, "paths"), into: folder, mode: mode, identical: identical,
                                          dryRun: try bool(args, "dry_run") ?? false, source: "mcp")
             case "undo_last":
                 value = try service.undo(id: try string(args, "id"))

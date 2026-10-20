@@ -3,6 +3,8 @@ import Foundation
 struct Move: Codable, Equatable {
     let source: URL
     let destination: URL
+    /// A file that was already in the target folder with the same content (found by hash).
+    var identicalTo: URL? = nil
 }
 
 /// Move the items, or leave them where they are and put copies into the target.
@@ -17,8 +19,12 @@ struct MoveResult {
     var mode: TransferMode = .move
     var moves: [Move] = []
     var failures: [(name: String, reason: String)] = []
+    /// Items left in place because the target already had the same content (policy `skip`).
+    var skipped: [Move] = []
     /// Destinations of the moved items, in drop order.
     var moved: [URL] { moves.map(\.destination) }
+    /// Moved items whose content already existed in the target.
+    var identical: [Move] { moves.filter { $0.identicalTo != nil } }
 }
 
 enum MoveError: LocalizedError {
@@ -42,7 +48,10 @@ enum Mover {
 
     /// Moves (or copies) each item into `target`. With a `pattern`, items are renamed with it; without,
     /// they keep their name. Folders go with their content; only the top-level folder is renamed.
-    static func move(_ urls: [URL], to target: URL, pattern: String?, mode: TransferMode = .move, now: Date = Date(),
+    /// Files whose content is already in `target` (by hash, whatever the name) are reported in
+    /// `identicalTo`, and with `.skip` left where they are.
+    static func move(_ urls: [URL], to target: URL, pattern: String?, mode: TransferMode = .move,
+                     identical: IdenticalPolicy = .keep, now: Date = Date(),
                      fileManager fm: FileManager = .default) -> MoveResult {
         var result = MoveResult(mode: mode)
         let realTarget = target.standardizedFileURL.resolvingSymlinksInPath().path
@@ -52,6 +61,12 @@ enum Mover {
                 let realSource = src.standardizedFileURL.resolvingSymlinksInPath().path
                 if realTarget == realSource || realTarget.hasPrefix(realSource + "/") { throw MoveError.intoItself }
                 let isDir = (try? src.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                let twin = isDir ? nil : Identical.find(src, in: target, fileManager: fm)
+                if let twin, identical == .skip {
+                    result.skipped.append(Move(source: src, destination: src, identicalTo: twin))
+                    Log.info(String(format: "skipped '%@': identical to '%@'", src.path, twin.path))
+                    continue
+                }
                 let newName = try pattern.map { try Renamer.render($0, originalName: name, isDirectory: isDir, date: now) } ?? name
                 let dest = Renamer.uniqueDestination(in: target, name: newName, isDirectory: isDir) {
                     fm.fileExists(atPath: $0.path)
@@ -60,7 +75,8 @@ enum Mover {
                 case .move: try fm.moveItem(at: src, to: dest)
                 case .copy: try fm.copyItem(at: src, to: dest)
                 }
-                result.moves.append(Move(source: src, destination: dest))
+                result.moves.append(Move(source: src, destination: dest, identicalTo: twin))
+                if let twin { Log.info(String(format: "'%@' is identical to '%@'", dest.path, twin.path)) }
             } catch {
                 Log.info(String(format: "failed to %@ '%@' to '%@': %@", mode.rawValue, src.path, target.path, error.localizedDescription))
                 result.failures.append((name, error.localizedDescription))

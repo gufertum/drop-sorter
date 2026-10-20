@@ -11,6 +11,15 @@ struct JournalEntry: Codable, Equatable {
     /// "app", "cli", "mcp", "api".
     let source: String
 
+    init(id: UUID, date: Date, folder: String, mode: TransferMode, moves: [Move], source: String) {
+        self.id = id
+        self.date = date
+        self.folder = folder
+        self.mode = mode
+        self.moves = moves
+        self.source = source
+    }
+
     init(_ outcome: SortOutcome, source: String, date: Date = Date()) {
         id = outcome.id
         self.date = date
