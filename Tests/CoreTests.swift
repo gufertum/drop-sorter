@@ -22,6 +22,20 @@ func folderIndexTests() throws {
     }
 }
 
+func relativePathTests() throws {
+    let root = try makeTempDir("relative")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let base = root.appendingPathComponent("Vault")
+    try FileManager.default.createDirectory(at: base.appendingPathComponent("30 Areas/Finance"), withIntermediateDirectories: true)
+    eq(FolderIndex.relativePath(of: base.appendingPathComponent("30 Areas/Finance"), in: base), "30 Areas/Finance")
+    eq(FolderIndex.relativePath(of: base, in: base), nil)
+    eq(FolderIndex.relativePath(of: root.appendingPathComponent("Vault2"), in: base), nil)
+    eq(FolderIndex.relativePath(of: root, in: base), nil)
+    // /var/... and /private/var/... name the same folder.
+    let viaLink = URL(fileURLWithPath: base.path.replacingOccurrences(of: "/private/var/", with: "/var/"))
+    eq(FolderIndex.relativePath(of: viaLink.appendingPathComponent("30 Areas"), in: base), "30 Areas")
+}
+
 func historyTests() throws {
     var h = History()
     h.record(tokens: ["rechnung", "swisscom"], folder: "Invoices")

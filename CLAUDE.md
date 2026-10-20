@@ -11,9 +11,10 @@ Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 
 - `Sources/Core/` Foundation only, shared by both apps and the tests: Renamer, Mover, Tokenizer,
   Matcher, FolderIndex, History, JSONStore, SorterConfig, SorterConfigStore, YAML, DropMoverConfig,
-  ShelfVisibility, ChooserModel, Sorter.
+  ShelfVisibility, ChooserModel, Sorter, ShelfLabels.
 - `Sources/DropMover/` Drop Mover app (AppKit). `Resources/DropMover/Info.plist`.
-- `Sources/DropSorter/` Drop Sorter agent app: FrontmostWatcher, ShelfPanel, ChooserPanel, SortToast, main.
+- `Sources/DropSorter/` Drop Sorter agent app: FrontmostWatcher, ShelfPanel (main and favorite spots),
+  ChooserPanel, SortToast, SettingsWindow, MenuBarItem, main.
   `Resources/DropSorter/Info.plist` (`LSUIElement`). `DROPSORTER_HOME=<dir>` replaces the Application Support
   folder, for manual tests with a sample vault: `open -n --env DROPSORTER_HOME=<dir> "build/Drop Sorter.app"`.
 - `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
@@ -24,6 +25,7 @@ Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 ```bash
 ./build.sh      # tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
 scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured Drop Mover copy (until phase 4)
+scripts/make-signing-identity.sh   # once: stable signing identity, picked up by build.sh
 ```
 
 - Built with plain `swiftc` from the Command Line Tools. XCTest is not available there, so the
@@ -44,6 +46,9 @@ scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured Drop M
   `~/Library/Application Support/li.sudo.dropsorter/`, bundle id `li.sudo.dropsorter`, signed with a
   stable identity so TCC grants survive rebuilds. Generated Drop Mover apps get `li.sudo.dropmover`
   (phase 4; today's copies still carry `io.schaedler.dropmover`).
+- The vault is rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
+  watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
+- The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
 - The matcher is pure (no file system access): `FolderIndex` lists folders, `Matcher` scores them.
   A folder is only preselected when the match is clear; a blind Return must never misfile.
 - `Mover` never overwrites (`-2`, `-3` suffixes), moves item by item and reports per-item failures;
