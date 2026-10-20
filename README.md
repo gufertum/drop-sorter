@@ -201,7 +201,7 @@ suggest:
 shelf:
   showOnDesktop: true
   hideDelayMs: 400
-menuBarIcon: false
+menuBarIcon: true    # default; false hides the icon
 api:                 # REST API, Settings › General › API
   enabled: false
   port: 47800

@@ -50,7 +50,8 @@ struct SorterConfig: Codable, Equatable {
     var extensionRules: [String: String] = [:]
     var suggest = Suggest()
     var shelf = Shelf()
-    var menuBarIcon = false
+    /// On unless the file says `menuBarIcon: false`.
+    var menuBarIcon = true
     var api = API()
     /// Drop Mover apps managed in Settings, absolute paths (`~` allowed).
     var dropApps: [String] = []
@@ -72,7 +73,7 @@ struct SorterConfig: Codable, Equatable {
         extensionRules = try c.decodeIfPresent([String: String].self, forKey: .extensionRules) ?? [:]
         suggest = try c.decodeIfPresent(Suggest.self, forKey: .suggest) ?? Suggest()
         shelf = try c.decodeIfPresent(Shelf.self, forKey: .shelf) ?? Shelf()
-        menuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .menuBarIcon) ?? false
+        menuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .menuBarIcon) ?? true
         dropApps = try c.decodeIfPresent([String].self, forKey: .dropApps) ?? []
         api = try c.decodeIfPresent(API.self, forKey: .api) ?? API()
     }
