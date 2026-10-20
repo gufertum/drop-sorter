@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// `DROPSORTER_HOME` points to another folder for config and history, for tests with a sample vault.
+    /// `DROPSORTER_HOME` points to another folder for config and history, for tests with a sample base folder.
     private let supportDirectory = ProcessInfo.processInfo.environment["DROPSORTER_HOME"]
         .map { URL(fileURLWithPath: $0, isDirectory: true) }
         ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -164,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             folders = try FolderIndex.scan(base: base, exclude: config.exclude)
         } catch {
-            showError("Cannot read the vault", [error.localizedDescription], openConfig: true)
+            showError("Cannot read the base folder", [error.localizedDescription], openConfig: true)
             return
         }
         history.prune(keeping: Set(folders.map(\.path)))
@@ -254,18 +254,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// No vault yet. Without a config file, ask for the folder and create config.yaml. With a
+    /// No base folder yet. Without a config file, ask for the folder and create config.yaml. With a
     /// hand-written file, do not rewrite it (comments would be lost): point the user to it instead.
     private func askForBase(then urls: [URL]) {
         if configStore.activeURL != nil {
-            showError("No vault folder set", ["Add a line like this to the configuration:", "base: ~/Obsidian/Private"], openConfig: true)
+            showError("No base folder set", ["Add a line like this to the configuration:", "base: ~/Documents/Files"], openConfig: true)
             return
         }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.prompt = "Use as Vault"
-        panel.message = "Choose the base folder (your Obsidian vault). Every subfolder becomes a target."
+        panel.prompt = "Use as Base Folder"
+        panel.message = "Choose the base folder. Every folder below it becomes a target."
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         var updated = config

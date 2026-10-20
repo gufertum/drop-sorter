@@ -1,16 +1,15 @@
 # Drop Sorter
 
-A macOS shelf for sorting files into an Obsidian vault. The shelf slides in while Finder is the active
-app. Drop files or folders on it and a chooser suggests the target folder from the file names. Type to
-narrow the list, press Return to move, Esc to leave everything where it was. Every subfolder of the
-vault is a target; favorites get their own drop spot on the shelf and move at once. Rename rules give
-items moved into chosen folders a date prefix (or any other naming).
+A general-purpose file mover for macOS. Pick a base folder, such as your documents, an archive or a
+project folder; every folder below it becomes a target. A shelf slides in while Finder is the active
+app. Drop files or folders on it and a chooser suggests the target folder from the file names. Type
+to narrow the list, press Return to move, Esc to leave everything where it was. Favorites get their
+own drop spot on the shelf and move at once. Rename rules give items moved into chosen folders a
+date prefix (or any other naming).
 
 Drop Sorter also builds and manages **Drop Mover** apps, standalone drop targets for one fixed folder
 (see [docs/DROP-MOVER.md](docs/DROP-MOVER.md)). Drop Mover used to live in `lab/drop-mover`; its code
 and history are in this repository now.
-
-Concept and GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 
 ## Status
 
@@ -52,7 +51,7 @@ Drop Sorter runs in the background without a Dock icon.
 
 ### Stable signature
 
-macOS ties privacy grants (such as access to a vault in `~/Documents`) to the app's signature. An
+macOS ties privacy grants (such as access to a base folder in `~/Documents`) to the app's signature. An
 ad-hoc signature changes with every build, so macOS may ask again. Create a local signing identity
 once; `build.sh` then uses it automatically:
 
@@ -68,9 +67,9 @@ The first `codesign` run may ask for keychain access: choose "Always Allow".
 `build/suggest` runs the matcher against a real folder tree, without the app:
 
 ```bash
-build/suggest ~/Obsidian/Private "Rechnung_Swisscom_2026-09.pdf" "invoice-hetzner.pdf"
-build/suggest -q "fin inv" ~/Obsidian/Private "scan.pdf"          # what the chooser shows after typing
-build/suggest -c config.yaml ~/Obsidian/Private "old-notes/"       # trailing "/" = folder
+build/suggest ~/Documents/Files "Rechnung_Swisscom_2026-09.pdf" "invoice-hetzner.pdf"
+build/suggest -q "fin inv" ~/Documents/Files "scan.pdf"          # what the chooser shows after typing
+build/suggest -c config.yaml ~/Documents/Files "old-notes/"       # trailing "/" = folder
 ```
 
 It prints the preselected folder (or `none` when the match is not clear) and the top 8 folders with
@@ -105,7 +104,7 @@ the same keys is read when there is no `config.yaml`; when both exist, `config.y
 is logged. Saving writes back to the file that was read.
 
 ```yaml
-base: ~/Obsidian/Private
+base: ~/Documents/Files
 renameRules:                             # folder: pattern, also for its subfolders
   90 Archive: "{date}_{time}_{name}{ext}"   # quoted: a value starting with { must be
   90 Archive/Keep: "{original}"          # exception: keep names here
@@ -117,7 +116,7 @@ favorites:
   - 30 Areas/Finance/Invoices
   - 90 Archive
 exclude:
-  - 50 Attachments/_excalidraw
+  - 50 Attachments/_cache
 aliases:
   30 Areas/Finance/Invoices: [rechnung, bill]
 extensionRules:
@@ -130,10 +129,10 @@ shelf:
   hideDelayMs: 400
 menuBarIcon: false
 dropApps:            # managed in Settings › Drop apps
-  - ~/Documents/2ndBrain-Files/00-Inbox/_archiviere-rechnungen.app
+  - ~/Documents/Files/00 Inbox/_move-to-invoices.app
 ```
 
-All folder paths are relative to `base`. Hidden folders (`.obsidian`, `.trash`, `.git`) and packages
+All folder paths are relative to `base`. Hidden folders (such as `.git` or `.Trash`) and packages
 are never targets.
 
 **Rename rules** use the Drop Mover tokens (see [docs/DROP-MOVER.md](docs/DROP-MOVER.md#rename-pattern)).

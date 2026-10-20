@@ -1,13 +1,13 @@
 import Foundation
 
-/// One drop sorted into one vault folder: the move result plus what Undo needs.
+/// One drop sorted into one target folder: the move result plus what Undo needs.
 struct SortOutcome {
     let folder: String
     let target: URL
     var result: MoveResult
 }
 
-/// Glue between the chooser and the file system: moves into a vault folder with the right rename
+/// Glue between the chooser and the file system: moves into a folder below the base with the right rename
 /// pattern and keeps the history in step, including Undo.
 enum Sorter {
     static func dropItems(_ urls: [URL]) -> [DropItem] {

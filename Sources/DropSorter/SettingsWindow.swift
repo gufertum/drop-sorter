@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 
-/// Settings: vault, rename rules, shelf, menu-bar icon, open at login, learned history (General tab);
+/// Settings: base folder, rename rules, shelf, menu-bar icon, open at login, learned history (General tab);
 /// favorites and Drop Mover apps (second tab).
 /// Every change is saved at once through `onChange`, which returns an error text when it was refused.
 final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
@@ -13,7 +13,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let configPath: String
     private var historyWords: Int
 
-    private let vaultLabel = NSTextField(labelWithString: "")
+    private let baseLabel = NSTextField(labelWithString: "")
     private let ruleTable = NSTableView()
     /// Rename rules sorted by folder, so parents come before their subfolders.
     private var rules: [(folder: String, rule: RenameRule)] = []
@@ -71,12 +71,12 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
         let button = { (title: String, action: Selector) -> NSButton in NSButton(title: title, target: self, action: action) }
 
-        for l in [vaultLabel] {
+        for l in [baseLabel] {
             l.lineBreakMode = .byTruncatingMiddle
             l.isSelectable = true
             l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
-        let vaultRow = NSStackView(views: [vaultLabel, button("Choose…", #selector(chooseVault)), button("Show in Finder", #selector(showVault))])
+        let baseRow = NSStackView(views: [baseLabel, button("Choose…", #selector(chooseBase)), button("Show in Finder", #selector(showBase))])
         for (id, title, width) in [("folder", "Folder", 170.0), ("subfolders", "Subfolders", 70.0), ("pattern", "Pattern", 190.0), ("example", "Example", 200.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
@@ -167,7 +167,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         dropNote.textColor = .secondaryLabelColor
 
         let general: [NSView] = [
-            heading("Vault"), vaultRow, small("Every subfolder is a target. Hidden folders and packages are skipped."),
+            heading("Base folder"), baseRow, small("Every subfolder is a target. Hidden folders and packages are skipped."),
             heading("Rename rules"), ruleScroll, ruleButtons,
             small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder."),
             heading("Shelf"), desktopCheck, delayRow,
@@ -226,8 +226,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     }
 
     private func refresh() {
-        vaultLabel.stringValue = config.base ?? "— not set —"
-        vaultLabel.textColor = config.base == nil ? .systemRed : .labelColor
+        baseLabel.stringValue = config.base ?? "— not set —"
+        baseLabel.textColor = config.base == nil ? .systemRed : .labelColor
         rules = config.renameRules.map { (folder: $0.key, rule: $0.value) }.sorted { $0.folder < $1.folder }
         ruleTable.reloadData()
         favoritesTable.reloadData()
@@ -271,10 +271,10 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
 
     private var baseURL: URL? { config.baseURL }
 
-    /// Folder picker that only accepts folders inside the vault. Returns the relative path.
-    private func chooseFolderInVault(prompt: String, message: String) -> String? {
+    /// Folder picker that only accepts folders inside the base folder. Returns the relative path.
+    private func chooseFolderInBase(prompt: String, message: String) -> String? {
         guard let base = baseURL else {
-            errorLabel.stringValue = "Choose the vault folder first."
+            errorLabel.stringValue = "Choose the base folder first."
             return nil
         }
         let panel = NSOpenPanel()
@@ -286,18 +286,18 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         panel.directoryURL = base
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         guard let rel = FolderIndex.relativePath(of: url, in: base) else {
-            errorLabel.stringValue = "\(url.path) is not inside the vault \(base.path)."
+            errorLabel.stringValue = "\(url.path) is not inside the base folder \(base.path)."
             return nil
         }
         return rel
     }
 
-    @objc private func chooseVault() {
+    @objc private func chooseBase() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.prompt = "Use as Vault"
-        panel.message = "Choose the base folder (your Obsidian vault). Every subfolder becomes a target."
+        panel.prompt = "Use as Base Folder"
+        panel.message = "Choose the base folder. Every folder below it becomes a target."
         panel.directoryURL = baseURL
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let home = NSHomeDirectory()
@@ -305,14 +305,14 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         commit { $0.base = path }
     }
 
-    @objc private func showVault() {
+    @objc private func showBase() {
         if let baseURL { NSWorkspace.shared.open(baseURL) }
     }
 
     // MARK: Rename rules
 
     @objc private func addRule() {
-        guard let rel = chooseFolderInVault(prompt: "Add Rule", message: "Items moved into this folder (and its subfolders) are renamed.") else { return }
+        guard let rel = chooseFolderInBase(prompt: "Add Rule", message: "Items moved into this folder (and its subfolders) are renamed.") else { return }
         guard config.renameRules[rel] == nil else { errorLabel.stringValue = "\(rel) already has a rule."; return }
         commit { $0.renameRules[rel] = RenameRule(pattern: Renamer.defaultPattern) }
         if let row = rules.firstIndex(where: { $0.folder == rel }) { ruleTable.selectRowIndexes([row], byExtendingSelection: false) }
@@ -372,7 +372,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         let row = favoritesTable.selectedRow
         switch favoriteButtons.selectedSegment {
         case 0:
-            guard let rel = chooseFolderInVault(prompt: "Add Favorite", message: "The folder gets its own drop spot on the shelf.") else { return }
+            guard let rel = chooseFolderInBase(prompt: "Add Favorite", message: "The folder gets its own drop spot on the shelf.") else { return }
             if config.favorites.contains(rel) { return }
             commit { $0.favorites.append(rel) }
             favoritesTable.selectRowIndexes([config.favorites.count - 1], byExtendingSelection: false)

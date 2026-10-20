@@ -5,10 +5,10 @@ func shelfVisibilityTests() {
     let finder = ShelfVisibility.finderBundleID
     eq(v.decide(frontmost: finder, finderHasWindows: true, pinned: false, busy: false), .show)
     eq(v.decide(frontmost: finder, finderHasWindows: false, pinned: false, busy: false), .show)
-    eq(v.decide(frontmost: "md.obsidian", finderHasWindows: true, pinned: false, busy: false), .hideLater)
+    eq(v.decide(frontmost: "com.apple.Safari", finderHasWindows: true, pinned: false, busy: false), .hideLater)
     eq(v.decide(frontmost: nil, finderHasWindows: false, pinned: false, busy: false), .hideLater)
-    eq(v.decide(frontmost: "md.obsidian", finderHasWindows: false, pinned: true, busy: false), .show)
-    eq(v.decide(frontmost: "md.obsidian", finderHasWindows: false, pinned: false, busy: true), .show)
+    eq(v.decide(frontmost: "com.apple.Safari", finderHasWindows: false, pinned: true, busy: false), .show)
+    eq(v.decide(frontmost: "com.apple.Safari", finderHasWindows: false, pinned: false, busy: true), .show)
     eq(v.decide(frontmost: v.ownBundleID, finderHasWindows: false, pinned: false, busy: false), .keep)
 
     var desktopOff = ShelfVisibility()
@@ -69,7 +69,7 @@ func sorterTests() throws {
     let fm = FileManager.default
     let root = try makeTempDir("sorter")
     defer { try? fm.removeItem(at: root) }
-    let base = root.appendingPathComponent("Vault"), downloads = root.appendingPathComponent("Downloads")
+    let base = root.appendingPathComponent("Base"), downloads = root.appendingPathComponent("Downloads")
     for dir in ["30 Areas/Finance/Invoices", "90 Archive"] {
         try fm.createDirectory(at: base.appendingPathComponent(dir), withIntermediateDirectories: true)
     }

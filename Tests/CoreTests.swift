@@ -4,14 +4,14 @@ func folderIndexTests() throws {
     let fm = FileManager.default
     let base = try makeTempDir("index")
     defer { try? fm.removeItem(at: base) }
-    for dir in ["00 Inbox", "30 Areas/Finance/Invoices", ".obsidian/plugins", "50 Attachments/_excalidraw/x",
+    for dir in ["00 Inbox", "30 Areas/Finance/Invoices", ".config/plugins", "50 Attachments/_cache/x",
                 "Tools/Some.app/Contents", "Ünïcode"] {
         try fm.createDirectory(at: base.appendingPathComponent(dir), withIntermediateDirectories: true)
     }
     try touch(base.appendingPathComponent("00 Inbox/note.md"))
     try fm.createSymbolicLink(at: base.appendingPathComponent("link"), withDestinationURL: base.appendingPathComponent("00 Inbox"))
 
-    let paths = try FolderIndex.scan(base: base, exclude: ["/50 Attachments/_excalidraw/"]).map(\.path)
+    let paths = try FolderIndex.scan(base: base, exclude: ["/50 Attachments/_cache/"]).map(\.path)
     eq(paths, ["00 Inbox", "30 Areas", "30 Areas/Finance", "30 Areas/Finance/Invoices", "50 Attachments", "Tools", "Ünïcode"])
 
     do {
@@ -25,11 +25,11 @@ func folderIndexTests() throws {
 func relativePathTests() throws {
     let root = try makeTempDir("relative")
     defer { try? FileManager.default.removeItem(at: root) }
-    let base = root.appendingPathComponent("Vault")
+    let base = root.appendingPathComponent("Base")
     try FileManager.default.createDirectory(at: base.appendingPathComponent("30 Areas/Finance"), withIntermediateDirectories: true)
     eq(FolderIndex.relativePath(of: base.appendingPathComponent("30 Areas/Finance"), in: base), "30 Areas/Finance")
     eq(FolderIndex.relativePath(of: base, in: base), nil)
-    eq(FolderIndex.relativePath(of: root.appendingPathComponent("Vault2"), in: base), nil)
+    eq(FolderIndex.relativePath(of: root.appendingPathComponent("Base2"), in: base), nil)
     eq(FolderIndex.relativePath(of: root, in: base), nil)
     // /var/... and /private/var/... name the same folder.
     let viaLink = URL(fileURLWithPath: base.path.replacingOccurrences(of: "/private/var/", with: "/var/"))
@@ -66,7 +66,7 @@ func moverTests() throws {
     let fm = FileManager.default
     let root = try makeTempDir("mover")
     defer { try? fm.removeItem(at: root) }
-    let src = root.appendingPathComponent("Downloads"), target = root.appendingPathComponent("Vault/Invoices")
+    let src = root.appendingPathComponent("Downloads"), target = root.appendingPathComponent("Base/Invoices")
     try fm.createDirectory(at: target, withIntermediateDirectories: true)
     try touch(src.appendingPathComponent("a.pdf"), "new")
     try touch(src.appendingPathComponent("Scans/1.jpg"))
@@ -110,7 +110,7 @@ func sorterConfigTests() throws {
     try empty.validate()
 
     let json = """
-    {"base": "~/Obsidian/Private",
+    {"base": "~/Documents/Files",
      "renameRules": {"90 Archive": "{date}_{time}_{name}{ext}", "90 Archive/Keep": "{original}",
                      "40 Resources/Scans": "{date:yyyyMMdd}-{name}{ext}",
                      "00 Inbox": {"pattern": "{date}_{name}{ext}", "subfolders": false},
@@ -121,7 +121,7 @@ func sorterConfigTests() throws {
     """
     let cfg = try JSONDecoder().decode(SorterConfig.self, from: Data(json.utf8))
     try cfg.validate()
-    eq(cfg.baseURL?.path, NSString(string: "~/Obsidian/Private").expandingTildeInPath)
+    eq(cfg.baseURL?.path, NSString(string: "~/Documents/Files").expandingTildeInPath)
     // A rule covers its subfolders; the most specific rule wins; {original} keeps names.
     eq(cfg.renamePattern(forTarget: "90 Archive"), Renamer.defaultPattern)
     eq(cfg.renamePattern(forTarget: "90 Archive/2026"), Renamer.defaultPattern)

@@ -9,7 +9,7 @@ func yamlTests() throws {
     let doc = """
     # Drop Sorter
     ---
-    base: ~/Obsidian/Private   # trailing comment
+    base: ~/Documents/Files   # trailing comment
     archive:
       folder: 90 Archive
       pattern: "{date}_{name}{ext}"
@@ -37,7 +37,7 @@ func yamlTests() throws {
     url: http://example.com/a#b
     """
     let d = parse(doc)
-    eq(d?["base"] as? String, "~/Obsidian/Private")
+    eq(d?["base"] as? String, "~/Documents/Files")
     eq((d?["archive"] as? NSDictionary)?["pattern"] as? String, "{date}_{name}{ext}")
     eq(d?["favorites"] as? [String], ["00 Inbox", "30 Areas/Finance/Invoices", "it's # not a comment"])
     eq((d?["exclude"] as? [Any])?.count, 0)
@@ -77,7 +77,7 @@ func yamlTests() throws {
 
     // Writer: round trip, quoting only where needed.
     var c = SorterConfig()
-    c.base = "~/Obsidian/Private"
+    c.base = "~/Documents/Files"
     c.renameRules = ["90 Archive": RenameRule(pattern: Renamer.defaultPattern), "90 Archive/Keep": "{original}",
                      "00 Inbox": RenameRule(pattern: "{date}_{name}{ext}", subfolders: false)]
     c.favorites = ["00 Inbox", "2026", "true", "- dash", "a: b", " pad"]
@@ -87,7 +87,7 @@ func yamlTests() throws {
     c.menuBarIcon = true
     let text = try YAML.encode(c, keyOrder: SorterConfigStore.keyOrder)
     eq(try YAML.decode(SorterConfig.self, from: text), c)
-    check(text.hasPrefix("base: ~/Obsidian/Private\nrenameRules:\n  00 Inbox:\n    pattern: \"{date}_{name}{ext}\"\n    subfolders: false\n  90 Archive: \"{date}_{time}_{name}{ext}\"\n  90 Archive/Keep: \"{original}\"\n"), "key order and plain scalars:\n\(text)")
+    check(text.hasPrefix("base: ~/Documents/Files\nrenameRules:\n  00 Inbox:\n    pattern: \"{date}_{name}{ext}\"\n    subfolders: false\n  90 Archive: \"{date}_{time}_{name}{ext}\"\n  90 Archive/Keep: \"{original}\"\n"), "key order and plain scalars:\n\(text)")
     check(text.contains("  - \"2026\"\n  - \"true\"\n  - \"- dash\"\n  - \"a: b\"\n  - \" pad\"\n"), "quoted where needed:\n\(text)")
     check(text.contains("exclude: []\n"), "empty list inline")
     eq(try YAML.encode(["k": [["a": [1], "b": [2, 3]]]]), "k:\n  - a:\n      - 1\n    b:\n      - 2\n      - 3\n")
@@ -103,7 +103,7 @@ func sorterConfigStoreTests() throws {
     eq(try store.load(), SorterConfig())
     eq(store.activeURL, nil)
     var c = SorterConfig()
-    c.base = "~/Vault"
+    c.base = "~/Files"
     try store.save(c)
     eq(store.activeURL, store.yamlURL)
     eq(try store.load(), c)
@@ -138,7 +138,7 @@ func sorterConfigStoreTests() throws {
     check((try? store.save({ var x = SorterConfig(); x.favorites = ["/abs"]; return x }())) == nil, "invalid config not saved")
 
     // Saving over a hand-written file keeps a copy of it; files the app wrote itself are not backed up.
-    let handWritten = "# my vault\nbase: ~/Vault   # comment\n"
+    let handWritten = "# my files\nbase: ~/Files   # comment\n"
     try Data(handWritten.utf8).write(to: store.yamlURL)
     try store.save(c)
     eq(try String(contentsOf: store.backupURL, encoding: .utf8), handWritten)

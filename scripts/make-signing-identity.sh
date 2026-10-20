@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates a self-signed code-signing identity in your login keychain, once. build.sh signs Drop Sorter
-# with it, so macOS privacy grants (e.g. access to a vault in ~/Documents) survive rebuilds.
+# with it, so macOS privacy grants (e.g. access to a base folder in ~/Documents) survive rebuilds.
 # Usage: scripts/make-signing-identity.sh [name]          (default name: "Drop Sorter Local")
 #        KEYCHAIN=<path> scripts/make-signing-identity.sh  (another keychain, for testing)
 # The certificate is not trusted system-wide and is only good for signing your own builds.
