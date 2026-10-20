@@ -5,7 +5,9 @@ import Foundation
 struct JournalEntry: Codable, Equatable {
     let id: UUID
     let date: Date
+    /// Full path of the target folder, and its short name for messages (nil in older journals).
     let folder: String
+    var display: String? = nil
     let mode: TransferMode
     let moves: [Move]
     /// "app", "cli", "mcp", "api".
@@ -24,6 +26,7 @@ struct JournalEntry: Codable, Equatable {
         id = outcome.id
         self.date = date
         folder = outcome.folder
+        display = outcome.display
         mode = outcome.result.mode
         moves = outcome.result.moves
         self.source = source

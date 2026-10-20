@@ -125,10 +125,10 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
             verdict.stringValue = override
             verdict.textColor = .systemOrange
         } else if let p = model.suggestion.preselected {
-            verdict.stringValue = "Clear match: \(p)"
+            verdict.stringValue = "Clear match: \(ranked.first { $0.path == p }?.folder.display ?? p)"
             verdict.textColor = .systemGreen
         } else if let top, top.score > 0 {
-            verdict.stringValue = "Unsure: \(top.path)" + (second.map { $0.score > 0 ? " or \($0.path)" : "" } ?? "") + ". Nothing preselected."
+            verdict.stringValue = "Unsure: \(top.folder.display)" + (second.map { $0.score > 0 ? " or \($0.folder.display)" : "" } ?? "") + ". Nothing preselected."
             verdict.textColor = .secondaryLabelColor
         } else {
             verdict.stringValue = "No hint in the name. Type to find the folder."
@@ -271,10 +271,11 @@ final class FolderCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     func show(_ c: Candidate, favorite: Bool, renames: Bool) {
-        let cut = c.path.range(of: "/", options: .backwards).map { c.path.distance(from: c.path.startIndex, to: $0.upperBound) } ?? 0
-        let s = NSMutableAttributedString(string: String(c.path.prefix(cut)),
+        let shown = c.folder.display
+        let cut = shown.range(of: "/", options: .backwards).map { shown.distance(from: shown.startIndex, to: $0.upperBound) } ?? 0
+        let s = NSMutableAttributedString(string: String(shown.prefix(cut)),
                                           attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 13)])
-        s.append(NSAttributedString(string: String(c.path.dropFirst(cut)),
+        s.append(NSAttributedString(string: String(shown.dropFirst(cut)),
                                     attributes: [.foregroundColor: NSColor.labelColor, .font: NSFont.systemFont(ofSize: 13, weight: .medium)]))
         path.attributedStringValue = s
         detail.stringValue = c.score > 0 ? c.reasons.joined(separator: " · ") : ""

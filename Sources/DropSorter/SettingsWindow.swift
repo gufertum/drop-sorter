@@ -13,7 +13,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let configPath: String
     private var historyWords: Int
 
-    private let baseLabel = NSTextField(labelWithString: "")
+    private let targetTable = NSTableView()
     private let ruleTable = NSTableView()
     /// Rename rules sorted by folder, so parents come before their subfolders.
     private var rules: [(folder: String, rule: RenameRule)] = []
@@ -86,12 +86,22 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
         let button = { (title: String, action: Selector) -> NSButton in NSButton(title: title, target: self, action: action) }
 
-        for l in [baseLabel] {
-            l.lineBreakMode = .byTruncatingMiddle
-            l.isSelectable = true
-            l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        for (id, title, width) in [("path", "Folder", 540.0), ("subfolders", "Subfolders", 80.0)] {
+            let c = NSTableColumn(identifier: .init(id))
+            c.title = title
+            c.width = width
+            targetTable.addTableColumn(c)
         }
-        let baseRow = NSStackView(views: [baseLabel, button("Choose…", #selector(chooseBase)), button("Show in Finder", #selector(showBase))])
+        targetTable.dataSource = self
+        targetTable.delegate = self
+        targetTable.usesAlternatingRowBackgroundColors = true
+        let targetScroll = NSScrollView()
+        targetScroll.documentView = targetTable
+        targetScroll.hasVerticalScroller = true
+        targetScroll.borderType = .bezelBorder
+        targetScroll.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        let baseRow = NSStackView(views: [button("Add Folder…", #selector(addTarget)), button("Remove", #selector(removeTarget)),
+                                          button("Show in Finder", #selector(showTarget))])
         for (id, title, width) in [("folder", "Folder", 170.0), ("subfolders", "Subfolders", 70.0), ("pattern", "Pattern", 190.0), ("example", "Example", 200.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
@@ -203,7 +213,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         dropNote.textColor = .secondaryLabelColor
 
         let general: [NSView] = [
-            heading("Base folder"), baseRow, small("Every subfolder is a target. Hidden folders and packages are skipped."),
+            heading("Target folders"), targetScroll, baseRow,
+            small("Files can go into these folders and, with Subfolders on, every folder inside them. Hidden folders and packages are skipped."),
             heading("Rename rules"), ruleScroll, ruleButtons,
             small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder."),
             heading("Shelf"), desktopCheck, delayRow,
@@ -229,7 +240,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             }
             return stack
         }
-        for (title, view) in [("General", pane(general, [2, 7, 10, 16])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
+        for (title, view) in [("General", pane(general, [3, 8, 11, 17])), ("Favorites & Drop Apps", pane(favorites, [3]))] {
             let item = NSTabViewItem(identifier: title)
             item.label = title
             item.view = view
@@ -237,7 +248,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
 
         let footer = small("Saved on every change to \(configPath). The file is rewritten without comments; a hand-written config.yaml is kept once as config.yaml.bak.")
-        let welcomeText = NSTextField(wrappingLabelWithString: "Welcome to Drop Sorter. The shelf sits at the right edge of your screen and slides in whenever Finder is the active app: drop files on it and pick the folder they belong in. Start by choosing your base folder below; every folder inside it becomes a target. Launch Drop Sorter again any time to bring the shelf back.")
+        let welcomeText = NSTextField(wrappingLabelWithString: "Welcome to Drop Sorter. The shelf sits at the bottom right of your screen and pops up whenever Finder is the active app: drop files on it and pick the folder they belong in. Start by adding your target folders below; each one and every folder inside it can take files. Launch Drop Sorter again any time to bring the shelf back.")
         welcomeText.font = .systemFont(ofSize: 12)
         welcomeBox.boxType = .custom
         welcomeBox.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.12)
@@ -275,8 +286,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     }
 
     private func refresh() {
-        baseLabel.stringValue = config.base ?? "— not set —"
-        baseLabel.textColor = config.base == nil ? .systemRed : .labelColor
+        targetTable.reloadData()
         rules = config.renameRules.map { (folder: $0.key, rule: $0.value) }.sorted { $0.folder < $1.folder }
         ruleTable.reloadData()
         favoritesTable.reloadData()
@@ -323,50 +333,83 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         refresh()
     }
 
-    private var baseURL: URL? { config.baseURL }
+    /// Where folder pickers start: the first target folder.
+    private var startFolder: URL? { config.targetRoots.first?.url }
 
-    /// Folder picker that only accepts folders inside the base folder. Returns the relative path.
-    private func chooseFolderInBase(prompt: String, message: String) -> String? {
-        guard let base = baseURL else {
-            errorLabel.stringValue = "Choose the base folder first."
-            return nil
-        }
+    /// Folder picker; returns the folder as written to the config ("~/…").
+    private func chooseFolder(prompt: String, message: String) -> String? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.prompt = prompt
         panel.message = message
-        panel.directoryURL = base
+        panel.directoryURL = startFolder
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
-        guard let rel = FolderIndex.relativePath(of: url, in: base) else {
-            errorLabel.stringValue = "\(url.path) is not inside the base folder \(base.path)."
-            return nil
-        }
-        return rel
+        return SorterConfig.abbreviate(url.path)
     }
 
-    @objc private func chooseBase() {
+    // MARK: Target folders
+
+    @objc private func addTarget() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.prompt = "Use as Base Folder"
-        panel.message = "Choose the base folder. Every folder below it becomes a target."
-        panel.directoryURL = baseURL
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let home = NSHomeDirectory()
-        let path = url.path.hasPrefix(home + "/") ? "~" + url.path.dropFirst(home.count) : url.path
-        commit { $0.base = path }
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Folders that take drops; each with all the folders inside it."
+        panel.directoryURL = startFolder
+        guard panel.runModal() == .OK else { return }
+        let known = Set(config.targets.map { SorterConfig.folderID($0.path) })
+        let new = panel.urls.map { SorterConfig.abbreviate($0.path) }.filter { !known.contains(SorterConfig.folderID($0)) }
+        commit { $0.targets += new.map { Target(path: $0) } }
     }
 
-    @objc private func showBase() {
-        if let baseURL { NSWorkspace.shared.open(baseURL) }
+    @objc private func removeTarget() {
+        let row = targetTable.selectedRow
+        guard config.targets.indices.contains(row) else { errorLabel.stringValue = "Select a target folder first."; return }
+        commit { $0.targets.remove(at: row) }
+    }
+
+    @objc private func showTarget() {
+        let row = targetTable.selectedRow
+        let urls = config.targets.indices.contains(row) ? [config.targetRoots[row].url] : config.targetRoots.map(\.url)
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    @objc private func targetSubfoldersToggled(_ sender: NSButton) {
+        guard config.targets.indices.contains(sender.tag) else { return }
+        let row = sender.tag
+        commit { $0.targets[row].subfolders = sender.state == .on }
+    }
+
+    private func targetCell(_ row: Int, column: String) -> NSView {
+        let t = config.targets[row]
+        if column == "subfolders" {
+            let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(targetSubfoldersToggled(_:)))
+            check.state = t.subfolders ? .on : .off
+            check.tag = row
+            check.toolTip = "On: every folder inside it is a target too. Off: only this folder."
+            return check
+        }
+        return pathLabel(t.path)
+    }
+
+    /// A folder path; red with "(not found)" when it does not exist.
+    private func pathLabel(_ path: String) -> NSTextField {
+        let label = NSTextField(labelWithString: path)
+        label.lineBreakMode = .byTruncatingMiddle
+        if !FileManager.default.fileExists(atPath: SorterConfig.folderID(path)) {
+            label.stringValue = path + "  (not found)"
+            label.textColor = .systemRed
+        }
+        return label
     }
 
     // MARK: Rename rules
 
     @objc private func addRule() {
-        guard let rel = chooseFolderInBase(prompt: "Add Rule", message: "Items moved into this folder (and its subfolders) are renamed.") else { return }
+        guard let rel = chooseFolder(prompt: "Add Rule", message: "Items moved into this folder (and its subfolders) are renamed.") else { return }
         guard config.renameRules[rel] == nil else { errorLabel.stringValue = "\(rel) already has a rule."; return }
         commit { $0.renameRules[rel] = RenameRule(pattern: Renamer.defaultPattern) }
         if let row = rules.firstIndex(where: { $0.folder == rel }) { ruleTable.selectRowIndexes([row], byExtendingSelection: false) }
@@ -430,8 +473,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         let row = favoritesTable.selectedRow
         switch favoriteButtons.selectedSegment {
         case 0:
-            guard let rel = chooseFolderInBase(prompt: "Add Favorite", message: "The folder gets its own drop spot on the shelf.") else { return }
-            if config.favoritePaths.contains(rel) { return }
+            guard let rel = chooseFolder(prompt: "Add Favorite", message: "The folder gets its own drop spot on the shelf.") else { return }
+            if config.favoriteIDs.contains(SorterConfig.folderID(rel)) { return }
             commit { $0.favorites.append(Favorite(folder: rel)) }
             favoritesTable.selectRowIndexes([config.favorites.count - 1], byExtendingSelection: false)
         case 1 where row >= 0:
@@ -561,12 +604,14 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
 
     func numberOfRows(in tableView: NSTableView) -> Int {
         if tableView === ruleTable { return rules.count }
+        if tableView === targetTable { return config.targets.count }
         return tableView === dropTable ? dropInfos.count : config.favorites.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if tableView === dropTable { return dropCell(dropInfos[row], column: tableColumn?.identifier.rawValue ?? "") }
         if tableView === ruleTable { return ruleCell(row, column: tableColumn?.identifier.rawValue ?? "") }
+        if tableView === targetTable { return targetCell(row, column: tableColumn?.identifier.rawValue ?? "") }
         let fav = config.favorites[row]
         if tableColumn?.identifier.rawValue == "copy" {
             let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(favoriteCopyToggled(_:)))
@@ -575,14 +620,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             check.toolTip = "On: dropping on this spot copies instead of moving."
             return check
         }
-        let path = fav.folder
-        let label = NSTextField(labelWithString: path)
-        label.lineBreakMode = .byTruncatingMiddle
-        if let base = baseURL, !FileManager.default.fileExists(atPath: base.appendingPathComponent(path).path) {
-            label.stringValue = path + "  (not found)"
-            label.textColor = .systemRed
-        }
-        return label
+        return pathLabel(fav.folder)
     }
 
     private func ruleCell(_ row: Int, column: String) -> NSView {
@@ -611,13 +649,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             label.lineBreakMode = .byTruncatingMiddle
             return label
         default:
-            let label = NSTextField(labelWithString: folder)
-            label.lineBreakMode = .byTruncatingMiddle
-            if let base = baseURL, !FileManager.default.fileExists(atPath: base.appendingPathComponent(folder).path) {
-                label.stringValue = folder + "  (not found)"
-                label.textColor = .systemRed
-            }
-            return label
+            return pathLabel(folder)
         }
     }
 
@@ -654,7 +686,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         pick.canCreateDirectories = true
         pick.prompt = "Choose Target"
         pick.message = "Step 1 of 2: the folder the new drop app moves files into."
-        pick.directoryURL = baseURL
+        pick.directoryURL = startFolder
         guard pick.runModal() == .OK, let target = pick.url else { return }
 
         let save = NSSavePanel()
@@ -662,15 +694,14 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         save.nameFieldStringValue = "_move-to-\(target.lastPathComponent).app"
         save.prompt = "Create"
         save.message = "Step 2 of 2: name and place of the drop app (usually the folder you sort from)."
-        save.directoryURL = baseURL
+        save.directoryURL = startFolder
         let copyCheck = NSButton(checkboxWithTitle: "Copy instead of move", target: nil, action: nil)
         copyCheck.frame.size = copyCheck.fittingSize
         save.accessoryView = copyCheck
         guard save.runModal() == .OK, let url = save.url else { return }
 
-        let rel = baseURL.flatMap { FolderIndex.relativePath(of: target, in: $0) }
         // Same naming as a drop on that folder in Drop Sorter; changeable later in the drop app's window.
-        let pattern = rel.flatMap { config.renamePattern(forTarget: $0) } ?? SorterConfig.keepNamePattern
+        let pattern = config.renamePattern(forTarget: target.path) ?? SorterConfig.keepNamePattern
         do {
             try dropApps.create(at: url, target: target, pattern: pattern, mode: copyCheck.state == .on ? .copy : .move)
             errorLabel.stringValue = ""

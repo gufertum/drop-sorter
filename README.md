@@ -1,7 +1,7 @@
 # Drop Sorter
 
-A general-purpose file mover for macOS. Pick a base folder, such as your documents, an archive or a
-project folder; every folder below it becomes a target. A shelf slides in while Finder is the active
+A general-purpose file mover for macOS. Pick the folders that take files, such as your documents, an
+archive or a project folder; each of them, and every folder inside it, becomes a target. A shelf slides in while Finder is the active
 app. Drop files or folders on it and a chooser suggests the target folder from the file names. Type
 to narrow the list, press Return to move, Esc to leave everything where it was. Favorites get their
 own drop spot on the shelf and move at once. Rename rules give items moved into chosen folders a
@@ -34,7 +34,7 @@ open "build/Drop Sorter.app"
 ## Use
 
 Drop Sorter runs in the background without a Dock icon. On the first start it opens Settings with a
-short welcome and asks for the base folder; the shelf flashes in the accent colour at every launch,
+short welcome and asks for your target folders; the shelf flashes in the accent colour at every launch,
 so it is easy to find.
 
 - **Shelf**: pops up at the bottom right of the screen while Finder is the active app and slides away 0.4 s
@@ -64,7 +64,7 @@ so it is easy to find.
 
 ### Stable signature
 
-macOS ties privacy grants (such as access to a base folder in `~/Documents`) to the app's signature. An
+macOS ties privacy grants (such as access to a target folder in `~/Documents`) to the app's signature. An
 ad-hoc signature changes with every build, so macOS may ask again. Create a local signing identity
 once; `build.sh` then uses it automatically:
 
@@ -96,8 +96,8 @@ dropsorter last --json                                   # what undo would rever
 
 Every command takes `--json`; errors then come as `{"error": {"code": …, "message": …}}`. Exit status:
 0 ok, 1 some items failed, 2 usage or input, 3 configuration, 4 no clear suggestion, 5 nothing to
-undo. Folders are relative to the base folder and must be real targets (no hidden, excluded or
-outside folders). Set `DROPSORTER_LOG=1` to see the engine's log lines.
+undo. Folders are given by their short name as `dropsorter folders` prints it (`Files/30 Areas`) or
+by full path, and must be real targets (no hidden, excluded or outside folders). Set `DROPSORTER_LOG=1` to see the engine's log lines.
 
 **Undo** covers only the most recent operation, whoever made it (drop, CLI, MCP or REST), once. An
 operation that changed nothing keeps the previous one undoable. Undo of a copy moves the copies to the
@@ -185,25 +185,26 @@ the same keys is read when there is no `config.yaml`; when both exist, `config.y
 is logged. Saving writes back to the file that was read.
 
 ```yaml
-base: ~/Documents/Files
-renameRules:                             # folder: pattern, also for its subfolders
-  90 Archive: "{date}_{time}_{name}{ext}"   # quoted: a value starting with { must be
-  90 Archive/Keep: "{original}"          # exception: keep names here
-  00 Inbox:                              # this exact folder only
+targets:                                   # folders that take files, each with everything inside it
+  - ~/Documents/Files
+  - path: ~/Desktop/Scans                  # only this folder, not the folders inside it
+    subfolders: false
+renameRules:                               # folder: pattern, also for its subfolders
+  ~/Documents/Files/90 Archive: "{date}_{time}_{name}{ext}"   # quoted: a value starting with { must be
+  ~/Documents/Files/90 Archive/Keep: "{original}"             # exception: keep names here
+  ~/Documents/Files/00 Inbox:                                 # this exact folder only
     pattern: "{date}_{name}{ext}"
     subfolders: false
-favorites:
-  - 00 Inbox
-  - folder: 80 Backup          # this spot always copies
+favorites:                                 # any folder, also outside the targets
+  - ~/Documents/Files/00 Inbox
+  - folder: ~/Backup                       # this spot always copies
     copy: true
-  - 30 Areas/Finance/Invoices
-  - 90 Archive
 exclude:
-  - 50 Attachments/_cache
+  - ~/Documents/Files/50 Attachments/_cache
 aliases:
-  30 Areas/Finance/Invoices: [rechnung, bill]
+  ~/Documents/Files/30 Areas/Finance/Invoices: [rechnung, bill]
 extensionRules:
-  heic jpg png: 50 Attachments/Images
+  heic jpg png: ~/Documents/Files/50 Attachments/Images
 suggest:
   minScore: 3
   minMargin: 1
@@ -218,8 +219,12 @@ dropApps:            # managed in Settings › Drop apps
   - ~/Documents/Files/00 Inbox/_move-to-invoices.app
 ```
 
-All folder paths are relative to `base`. Hidden folders (such as `.git` or `.Trash`) and packages
-are never targets.
+Folders are full paths (`~/` allowed). In the chooser, the CLI, MCP and REST they appear by a short
+name: the target folder's name and the path inside it (`Files/30 Areas/Finance`); two target folders
+with the same name get their parent folder (`Work/Projects`, `Other/Projects`). Hidden folders (such as
+`.git` or `.Trash`) and packages are never targets. An older file with `base:` is read as one target
+with its relative entries turned into full paths, and saved in the new form; the learned history is
+converted the same way.
 
 **Rename rules** use the Drop Mover tokens (see [docs/DROP-MOVER.md](docs/DROP-MOVER.md#rename-pattern)).
 A rule applies to its folder and, unless `subfolders: false`, to all folders below it. The most

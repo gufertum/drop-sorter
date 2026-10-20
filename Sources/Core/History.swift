@@ -41,6 +41,16 @@ struct History: Codable, Equatable {
         }
     }
 
+    /// Folder keys of histories written before target folders, relative to the former base folder.
+    var hasRelativeFolders: Bool { counts.values.contains { $0.keys.contains { !$0.hasPrefix("/") } } }
+
+    /// Turns relative folder keys into full paths below `base`.
+    mutating func rebase(onto base: String) {
+        counts = counts.mapValues { folders in
+            Dictionary(folders.map { ($0.key.hasPrefix("/") ? $0.key : base + "/" + $0.key, $0.value) }, uniquingKeysWith: +)
+        }
+    }
+
     /// Forgets folders that no longer exist (renamed or deleted below the base folder).
     mutating func prune(keeping folders: Set<String>) {
         for (t, map) in counts {

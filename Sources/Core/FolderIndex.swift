@@ -2,29 +2,73 @@ import Foundation
 
 enum FolderIndexError: LocalizedError, Equatable {
     case baseNotFound(String)
+    case noTargets
 
     var errorDescription: String? {
         switch self {
-        case .baseNotFound(let p): return "Base folder not found: \(p)"
+        case .baseNotFound(let p): return "Folder not found: \(p)"
+        case .noTargets: return "No target folders configured (Settings › General › Target folders)."
         }
     }
 }
 
-/// Lists every possible target below the base folder.
+/// Lists every possible target folder.
 enum FolderIndex {
     /// Files listed per folder for the "similar names" signal; more say nothing new and cost time.
     static let maxFilesPerFolder = 300
 
-    /// All subfolders of `base` as relative paths, sorted, each with the names of its files. Skips hidden folders (".git", ".Trash", …),
-    /// packages such as .app bundles, symbolic links, and `exclude` entries (relative paths, with their subfolders).
-    /// Unreadable subfolders are logged and skipped.
+    /// All target folders: each root itself and, with `subfolders`, every folder below it. Ids are full
+    /// paths, display names "<root name>/<path below>" (root names get parent folders only where two
+    /// roots would look the same). A missing root is logged and skipped; none left at all is an error.
+    /// Folders below an `exclude` path (full paths) are left out.
+    static func scan(targets: [(url: URL, subfolders: Bool)], exclude: [String] = [],
+                     fileManager fm: FileManager = .default) throws -> [FolderEntry] {
+        guard !targets.isEmpty else { throw FolderIndexError.noTargets }
+        let ids = targets.map { $0.url.standardizedFileURL.path }
+        let labels = ShelfLabels.labels(ids)
+        let excluded = exclude.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+        var seen = Set<String>()
+        var entries: [FolderEntry] = []
+        var missing: [String] = []
+        for ((root, subfolders), (id, label)) in zip(targets, zip(ids, labels)) {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: id, isDirectory: &isDir), isDir.boolValue else {
+                Log.info("target folder not found: \(id)")
+                missing.append(id)
+                continue
+            }
+            if excluded.contains(where: { id == $0 || id.hasPrefix($0 + "/") }) { continue }
+            let (folders, files) = try walk(root, recursive: subfolders, exclude: excluded.compactMap { ex in
+                ex.hasPrefix(id + "/") ? String(ex.dropFirst(id.count + 1)) : nil
+            }, fileManager: fm)
+            for rel in [""] + folders {
+                let full = rel.isEmpty ? id : id + "/" + rel
+                guard seen.insert(full).inserted else { continue }  // nested or repeated targets
+                entries.append(FolderEntry(path: full, display: rel.isEmpty ? label : label + "/" + rel, files: files[rel] ?? []))
+            }
+        }
+        if entries.isEmpty, let first = missing.first { throw FolderIndexError.baseNotFound(first) }
+        return entries
+    }
+
+    /// Single-folder form (tests, tools): the subfolders of `base` with paths relative to it, without
+    /// `base` itself.
     static func scan(base: URL, exclude: [String] = [], fileManager fm: FileManager = .default) throws -> [FolderEntry] {
-        let root = base.standardizedFileURL
         var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: root.path, isDirectory: &isDir), isDir.boolValue else {
+        guard fm.fileExists(atPath: base.standardizedFileURL.path, isDirectory: &isDir), isDir.boolValue else {
             throw FolderIndexError.baseNotFound(base.path)
         }
         let excluded = exclude.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }.filter { !$0.isEmpty }
+        let (folders, files) = try walk(base, recursive: true, exclude: excluded, fileManager: fm)
+        return folders.map { FolderEntry(path: $0, files: files[$0] ?? []) }
+    }
+
+    /// Folders below `root` (relative paths, sorted) and the files per folder ("" = the root itself).
+    /// Skips hidden folders (".git", ".Trash", …), packages such as .app bundles, symbolic links and
+    /// `exclude` entries (relative paths, with their subfolders). Unreadable subfolders are logged and skipped.
+    private static func walk(_ base: URL, recursive: Bool, exclude excluded: [String],
+                             fileManager fm: FileManager) throws -> ([String], [String: [String]]) {
+        let root = base.standardizedFileURL
         // isPackage asks Launch Services; it is fetched for folders only (100k files: 2 s -> well below).
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         guard let walker = fm.enumerator(at: root, includingPropertiesForKeys: keys,
@@ -35,7 +79,6 @@ enum FolderIndex {
                                          }) else {
             throw FolderIndexError.baseNotFound(base.path)
         }
-        // Relative path by components: resolvingSymlinksInPath and the enumerator disagree on /private/var vs /var.
         let rootDepth = root.pathComponents.count
         let rootPrefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
         // The enumerator may spell the root differently (/private/tmp vs /tmp): accept both spellings.
@@ -58,6 +101,8 @@ enum FolderIndex {
             guard let v = try? url.resourceValues(forKeys: keySet), v.isSymbolicLink != true else { continue }
             let isFolder = v.isDirectory == true && (try? url.resourceValues(forKeys: [.isPackageKey]).isPackage) != true
             if isFolder {
+                // Without subfolders only the root's own files are listed.
+                guard recursive else { walker.skipDescendants(); continue }
                 let rel = relative(url)
                 if excluded.contains(where: { rel == $0 || rel.hasPrefix($0 + "/") }) {
                     walker.skipDescendants()
@@ -65,16 +110,15 @@ enum FolderIndex {
                 }
                 folders.append(rel)
             } else {
-                // A file (or a package such as an .app) inside a folder below the base.
+                // A file (or a package such as an .app); "" is the root itself.
                 let rel = relative(url)
-                guard let slash = rel.utf8.lastIndex(of: UInt8(ascii: "/")) else { continue }  // files in the base itself: no target
-                let parent = String(rel[..<slash])
+                let parent = rel.utf8.lastIndex(of: UInt8(ascii: "/")).map { String(rel[..<$0]) } ?? ""
                 if files[parent, default: []].count < maxFilesPerFolder {
                     files[parent, default: []].append(url.lastPathComponent)
                 }
             }
         }
-        return folders.sorted().map { FolderEntry(path: $0, files: files[$0] ?? []) }
+        return (folders.sorted(), files)
     }
 
     /// `url` as a path relative to `base`, or nil when it is not inside it (or is `base` itself).

@@ -49,6 +49,6 @@ struct ChooserModel {
     /// Tab: filter to the selected folder and its subfolders.
     mutating func stepIntoSelection() {
         guard let path = selected?.path else { return }
-        setQuery(path + "/")
+        setQuery((selected?.folder.display ?? path) + "/")
     }
 }

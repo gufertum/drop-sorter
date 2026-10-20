@@ -76,42 +76,44 @@ func sorterTests() throws {
     try touch(downloads.appendingPathComponent("invoice-hetzner.pdf"))
     try touch(downloads.appendingPathComponent("Old Notes/a.md"))
 
+    // Folders are named by their full path.
+    let F = { (rel: String) in base.appendingPathComponent(rel).path }
     var config = SorterConfig()
-    config.renameRules = ["90 Archive": "{date:yyyy}_{name}{ext}", "30 Areas/Finance": "{date:MM}_{name}{ext}"]
+    config.renameRules = [F("90 Archive"): "{date:yyyy}_{name}{ext}", F("30 Areas/Finance"): "{date:MM}_{name}{ext}"]
     var history = History()
     let items = Sorter.dropItems([downloads.appendingPathComponent("invoice-hetzner.pdf"), downloads.appendingPathComponent("Old Notes")])
     eq(items.map(\.isDirectory), [false, true])
 
     let now = Date(timeIntervalSince1970: 1_791_590_400)
-    let inv = Sorter.sort([downloads.appendingPathComponent("invoice-hetzner.pdf")], into: "30 Areas/Finance/Invoices",
-                          base: base, config: config, history: &history, now: now)
+    let inv = Sorter.sort([downloads.appendingPathComponent("invoice-hetzner.pdf")], into: F("30 Areas/Finance/Invoices"),
+                          config: config, history: &history, now: now)
     // Any folder can have a rule; this one comes from its parent "30 Areas/Finance".
     eq(inv.result.moved.map(\.lastPathComponent), ["10_invoice-hetzner.pdf"])
-    eq(history.count("hetzner", "30 Areas/Finance/Invoices"), 1)
-    eq(history.count("invoice", "30 Areas/Finance/Invoices"), 1)
+    eq(history.count("hetzner", F("30 Areas/Finance/Invoices")), 1)
+    eq(history.count("invoice", F("30 Areas/Finance/Invoices")), 1)
 
     // Folders are renamed too (only the top-level name).
-    let arch = Sorter.sort([downloads.appendingPathComponent("Old Notes")], into: "90 Archive",
-                           base: base, config: config, history: &history, now: now)
+    let arch = Sorter.sort([downloads.appendingPathComponent("Old Notes")], into: F("90 Archive"),
+                           config: config, history: &history, now: now)
     eq(arch.result.moved.map(\.lastPathComponent), ["2026_Old Notes"])
     check(fm.fileExists(atPath: base.appendingPathComponent("90 Archive/2026_Old Notes/a.md").path), "archived folder content")
 
     // Undo puts the files back and takes the history entries back.
     eq(Sorter.undo(inv, history: &history).failures.count, 0)
     check(fm.fileExists(atPath: downloads.appendingPathComponent("invoice-hetzner.pdf").path), "undo restored the original name")
-    eq(history.count("hetzner", "30 Areas/Finance/Invoices"), 0)
+    eq(history.count("hetzner", F("30 Areas/Finance/Invoices")), 0)
     eq(history.counts["hetzner"] == nil, true)
-    eq(history.count("notes", "90 Archive"), 1)
+    eq(history.count("notes", F("90 Archive")), 1)
 
     // Copy into a folder: original stays, history learns, undo removes the copy and the history entry.
     try touch(downloads.appendingPathComponent("receipt-hetzner.pdf"))
     let fakeTrash = root.appendingPathComponent("Trash")
     try fm.createDirectory(at: fakeTrash, withIntermediateDirectories: true)
-    let cp = Sorter.sort([downloads.appendingPathComponent("receipt-hetzner.pdf")], into: "90 Archive",
-                         base: base, config: config, mode: .copy, history: &history, now: now)
+    let cp = Sorter.sort([downloads.appendingPathComponent("receipt-hetzner.pdf")], into: F("90 Archive"),
+                         config: config, mode: .copy, history: &history, now: now)
     eq(cp.result.moved.map(\.lastPathComponent), ["2026_receipt-hetzner.pdf"])
     check(fm.fileExists(atPath: downloads.appendingPathComponent("receipt-hetzner.pdf").path), "original kept")
-    eq(history.count("receipt", "90 Archive"), 1)
+    eq(history.count("receipt", F("90 Archive")), 1)
     let back = Sorter.undo(cp, history: &history) { url in
         let d = fakeTrash.appendingPathComponent(url.lastPathComponent)
         try fm.moveItem(at: url, to: d)
@@ -119,10 +121,10 @@ func sorterTests() throws {
     }
     eq(back.failures.count, 0)
     check(!fm.fileExists(atPath: base.appendingPathComponent("90 Archive/2026_receipt-hetzner.pdf").path), "copy removed")
-    eq(history.count("receipt", "90 Archive"), 0)
+    eq(history.count("receipt", F("90 Archive")), 0)
     check(cp.id != inv.id, "drops have distinct ids")
 
     // forget never goes below zero.
-    history.forget(tokens: ["notes", "notes", "unknown"], folder: "90 Archive")
-    eq(history.count("notes", "90 Archive"), 0)
+    history.forget(tokens: ["notes", "notes", "unknown"], folder: F("90 Archive"))
+    eq(history.count("notes", F("90 Archive")), 0)
 }

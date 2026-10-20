@@ -46,14 +46,14 @@ func mcpTests() throws {
 
     // Read tools.
     let folders = tool("list_folders", #"{"query":"inv"}"#)
-    eq((folders["structuredContent"] as? [String: Any])?["folders"] as? [String], ["30 Areas/Finance/Invoices"])
+    eq(((folders["structuredContent"] as? [String: Any])?["folders"] as? [[String: Any]])?.compactMap { $0["name"] as? String }, ["Files/30 Areas/Finance/Invoices"])
     eq(folders["isError"] as? Bool, false)
     let sug = tool("suggest_folder", #"{"names":["invoices-acme.pdf"],"limit":2}"#)["structuredContent"] as? [String: Any]
-    eq(sug?["preselected"] as? String, "30 Areas/Finance/Invoices")
+    eq(sug?["preselected"] as? String, "Files/30 Areas/Finance/Invoices")
     eq((sug?["candidates"] as? [Any])?.count, 2)
     eq((tool("last_operation", "{}")["structuredContent"] as? [String: Any])?["operation"] is NSNull, true)
     check(tool("list_drop_apps", "{}")["structuredContent"] != nil, "drop apps as an object")
-    check(((tool("get_config", "{}")["structuredContent"] as? [String: Any])?["base"] as? String) == base.path, "config")
+    check(((tool("get_config", "{}")["structuredContent"] as? [String: Any])?["targets"] as? [String]) == [base.path], "config")
 
     // Input errors are tool errors, never crashes.
     for bad in [#"{"names":"x"}"#, #"{"names":[]}"#, #"{"names":["a"],"limit":0}"#, #"{"names":["a"],"limit":true}"#] {
@@ -72,7 +72,7 @@ func mcpTests() throws {
     eq(dry?["dryRun"] as? Bool, true)
     check(fm.fileExists(atPath: file.path), "dry run")
     let moved = tool("sort_files", #"{"paths":["\#(file.path)"],"auto":true}"#)["structuredContent"] as? [String: Any]
-    eq(moved?["folder"] as? String, "30 Areas/Finance/Invoices")
+    eq(moved?["folder"] as? String, "Files/30 Areas/Finance/Invoices")
     check(!fm.fileExists(atPath: file.path), "moved")
     eq(((tool("last_operation", "{}")["structuredContent"] as? [String: Any])?["operation"] as? [String: Any])?["source"] as? String, "mcp")
     let undone = tool("undo_last", #"{"id":"\#(moved?["id"] as? String ?? "")"}"#)

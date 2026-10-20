@@ -95,9 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         visibility.showOnDesktop = config.shelf.showOnDesktop
         visibility.ownBundleID = Bundle.main.bundleIdentifier ?? visibility.ownBundleID
         watcher.watchFinderWindows = !config.shelf.showOnDesktop
-        let missing = config.baseURL.map { base in
-            Set(config.favoritePaths.filter { !FileManager.default.fileExists(atPath: base.appendingPathComponent($0).path) })
-        } ?? Set(config.favoritePaths)
+        let missing = Set(config.favorites.map(\.folder).filter {
+            !FileManager.default.fileExists(atPath: SorterConfig.folderID($0))
+        })
         shelf.setFavorites(config.favorites, missing: missing)
         if config.menuBarIcon && menuBar == nil {
             menuBar = MenuBarItem(menu: buildMenu(includeShowShelf: true))
@@ -150,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let id = e.id
         let moved = e.moves.map(\.destination)
-        toast.show(title: "\(e.mode.pastTense) \(plural(e.moves.count)) to \(e.folder) (via \(e.source))",
+        toast.show(title: "\(e.mode.pastTense) \(plural(e.moves.count)) to \(e.display ?? e.folder) (via \(e.source))",
                    lines: moved.prefix(6).map { "→ " + $0.lastPathComponent }, isError: false,
                    actions: [.init(title: "Undo") { [weak self] in self?.undo(id: id) },
                              .init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(moved) }])
@@ -216,13 +216,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func beginSort(_ urls: [URL], mode: TransferMode = .move) {
         guard chooser == nil, !urls.isEmpty else { return }
         guard reloadConfigIfChanged() else { return }
-        guard let base = config.baseURL else { return askForBase(then: urls) }
+        guard !config.targets.isEmpty else { return askForTargets(then: urls) }
 
         let folders: [FolderEntry]
         do {
-            folders = try FolderIndex.scan(base: base, exclude: config.exclude)
+            folders = try service.targetFolders(config)
         } catch {
-            showError("Cannot read the base folder", [error.localizedDescription], openConfig: true)
+            showError("Cannot read the target folders", [error.localizedDescription], openConfig: true)
             return
         }
         let history: History
@@ -232,13 +232,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let items = Sorter.dropItems(urls)
         let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
-        let model = ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoritePaths))
+        let model = ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoriteIDs))
 
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
         let config = self.config
         let panel = ChooserPanel(model: model, mode: mode) { config.renamePattern(forTarget: $0) }
-        panel.onFinish = { [weak self] path in self?.finishSort(urls, into: path, base: base, mode: mode) }
+        panel.onFinish = { [weak self] path in self?.finishSort(urls, into: path, mode: mode) }
         chooser = panel
         updateShelf()
         NSApp.activate(ignoringOtherApps: true)
@@ -248,17 +248,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Drop on a favorite spot: moves (or copies) at once, the toast offers Undo.
     private func sortIntoFavorite(_ urls: [URL], _ folder: String, mode: TransferMode) {
         guard chooser == nil, reloadConfigIfChanged() else { return }
-        guard let base = config.baseURL else { return askForBase(then: urls) }
+        let id = SorterConfig.folderID(folder)
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: base.appendingPathComponent(folder).path, isDirectory: &isDir), isDir.boolValue else {
+        guard FileManager.default.fileExists(atPath: id, isDirectory: &isDir), isDir.boolValue else {
             showError("Favorite folder not found", [folder, "Nothing was moved. Fix the favorite in Settings."], openConfig: false)
             applyConfig()
             return
         }
-        perform(urls, into: folder, mode: mode)
+        // A favorite is a target of its own, also outside the target folders.
+        perform(urls, into: id, mode: mode, anyFolder: true)
     }
 
-    private func finishSort(_ urls: [URL], into folder: String?, base: URL, mode: TransferMode) {
+    private func finishSort(_ urls: [URL], into folder: String?, mode: TransferMode) {
         chooser = nil
         previousApp?.activate(options: [])
         previousApp = nil
@@ -270,9 +271,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Moves or copies through the shared engine, which also records history and the undo journal.
-    private func perform(_ urls: [URL], into folder: String, mode: TransferMode) {
+    private func perform(_ urls: [URL], into folder: String, mode: TransferMode, anyFolder: Bool = false) {
         do {
-            showResult(try service.perform(urls, into: folder, mode: mode, source: "app"))
+            showResult(try service.perform(urls, into: folder, mode: mode, anyFolder: anyFolder, source: "app"))
         } catch {
             showError("\(mode == .copy ? "Copy" : "Move") failed", [error.localizedDescription], openConfig: false)
         }
@@ -314,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
         let failed = !r.failures.isEmpty
         let title = r.failures.isEmpty
-            ? "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.folder)"
+            ? "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)"
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
         var actions: [SortToast.Action] = []
         if !r.moves.isEmpty {
@@ -334,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let others = r.moves.count - twins.count
         if others > 0 { lines.append("\(r.mode.pastTense) \(plural(others)) without a twin.") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
-        let title = "\(twins.count) identical file\(twins.count == 1 ? "" : "s") already in \(o.folder)"
+        let title = "\(twins.count) identical file\(twins.count == 1 ? "" : "s") already in \(o.display)"
         toast.show(title: title, lines: lines, isError: false, isWarning: true, actions: [
             .init(title: "Undo") { [weak self] in self?.undo(id: o.id) },
             .init(title: "Delete Duplicate\(twins.count == 1 ? "" : "s")") { [weak self] in self?.deleteIdentical(o) },
@@ -358,22 +359,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var historyWords: Int { (try? service.history().counts.count) ?? 0 }
 
-    /// No base folder yet. Without a config file, ask for the folder and create config.yaml. With a
-    /// hand-written file, do not rewrite it (comments would be lost): point the user to it instead.
-    private func askForBase(then urls: [URL]) {
+    /// No target folders yet. Without a config file, ask for them and create config.yaml. With a
+    /// hand-written file, do not rewrite it (comments would be lost): point the user to Settings instead.
+    private func askForTargets(then urls: [URL]) {
         if configStore.activeURL != nil {
-            showError("No base folder set", ["Add a line like this to the configuration:", "base: ~/Documents/Files"], openConfig: true)
+            toast.show(title: "No target folders set", lines: ["Add the folders that take drops in Settings › General."],
+                       isError: true, actions: [.init(title: "Open Settings") { [weak self] in self?.showSettings(welcome: false) }])
             return
         }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.prompt = "Use as Base Folder"
-        panel.message = "Choose the base folder. Every folder below it becomes a target."
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Use as Targets"
+        panel.message = "Choose the folders that take drops. Each one and every folder inside it becomes a target."
         NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         var updated = config
-        updated.base = url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~", options: .anchored)
+        updated.targets = panel.urls.map { Target(path: SorterConfig.abbreviate($0.path)) }
         do {
             try configStore.save(updated)
             config = updated
@@ -505,7 +508,7 @@ extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard item.action == #selector(undoLastDrop) else { return true }
         if let last = try? service.lastOperation() {
-            item.title = "Undo Last Drop: \(last.mode.pastTense) \(last.moves.count) to \(last.folder)"
+            item.title = "Undo Last Drop: \(last.mode.pastTense) \(last.moves.count) to \(last.display ?? last.folder)"
                 + (last.source == "app" ? "" : " (via \(last.source))")
             return true
         }
