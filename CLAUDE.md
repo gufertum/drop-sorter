@@ -62,6 +62,9 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - The base folder is rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
   watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
 - The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
+- **Index performance**: keep per-file work cheap in `FolderIndex.scan` (byte-wise path math against
+  the `realpath` spelling of the root, ASCII fast path in `Tokenizer.fold`). Measure with a large
+  synthetic tree before and after changing it.
 - The matcher is pure (no file system access): `FolderIndex` lists folders, `Matcher` scores them.
   A folder is only preselected when the match is clear; a blind Return must never misfile.
 - `Mover` never overwrites (`-2`, `-3` suffixes), moves item by item and reports per-item failures;

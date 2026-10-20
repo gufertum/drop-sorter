@@ -5,6 +5,8 @@ let suites: [(String, () throws -> Void)] = [
     ("Log", logTests),
     ("Tokenizer", tokenizerTests),
     ("Matcher", matcherTests),
+    ("NameShape", nameShapeTests),
+    ("SimilarFiles", similarFilesTests),
     ("FolderIndex", folderIndexTests),
     ("RelativePath", relativePathTests),
     ("History", historyTests),
