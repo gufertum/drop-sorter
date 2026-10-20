@@ -147,7 +147,7 @@ final class RESTRouter {
         case .notFound: return 404
         case .nothingToUndo, .staleUndo: return 409
         case .folderNotAllowed, .noClearSuggestion: return 422
-        case .config, .noBase: return 503
+        case .config, .noTargets: return 503
         }
     }
 

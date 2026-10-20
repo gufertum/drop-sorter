@@ -9,6 +9,7 @@ let suites: [(String, () throws -> Void)] = [
     ("SimilarFiles", similarFilesTests),
     ("FolderIndex", folderIndexTests),
     ("RelativePath", relativePathTests),
+    ("Targets", targetsTests),
     ("History", historyTests),
     ("Mover", moverTests),
     ("SorterConfig", sorterConfigTests),

@@ -3,7 +3,7 @@ import Foundation
 /// Errors of the service layer, with stable codes for the CLI exit status, MCP and REST.
 enum ServiceError: LocalizedError, Equatable {
     case config(String)
-    case noBase
+    case noTargets
     case invalidInput(String)
     case notFound(String)
     case folderNotAllowed(String)
@@ -14,7 +14,7 @@ enum ServiceError: LocalizedError, Equatable {
     var code: String {
         switch self {
         case .config: return "config_error"
-        case .noBase: return "no_base_folder"
+        case .noTargets: return "no_target_folders"
         case .invalidInput: return "invalid_input"
         case .notFound: return "not_found"
         case .folderNotAllowed: return "folder_not_allowed"
@@ -27,10 +27,10 @@ enum ServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .config(let why): return "Configuration error: \(why)"
-        case .noBase: return "No base folder configured (set 'base' in the configuration or in Settings)."
+        case .noTargets: return "No target folders configured (Settings › General › Target folders, or 'targets' in the configuration)."
         case .invalidInput(let why): return why
         case .notFound(let path): return "Not found: \(path)"
-        case .folderNotAllowed(let f): return "'\(f)' is not a target folder below the base folder (hidden, excluded or missing)."
+        case .folderNotAllowed(let f): return "'\(f)' is not one of the target folders (hidden, excluded, missing or outside every target)."
         case .noClearSuggestion(let top):
             return "No clear suggestion; pick a folder explicitly." + (top.isEmpty ? "" : " Best candidates: " + top.joined(separator: ", "))
         case .nothingToUndo: return "Nothing to undo: only the most recent operation can be undone, once."
@@ -41,13 +41,22 @@ enum ServiceError: LocalizedError, Equatable {
 
 // MARK: - Reports (JSON for CLI --json, MCP and REST)
 
+struct FolderInfo: Codable, Equatable {
+    /// Short name, e.g. "Files/30 Areas/Finance"; accepted wherever a folder is asked for.
+    let name: String
+    let path: String
+}
+
 struct FolderReport: Codable, Equatable {
-    let base: String
-    let folders: [String]
+    /// The target folders of the configuration (full paths).
+    let targets: [String]
+    let folders: [FolderInfo]
 }
 
 struct CandidateReport: Codable, Equatable {
+    /// Short name.
     let folder: String
+    let path: String
     let score: Double
     let reasons: [String]
     /// Rename pattern applied in this folder, nil when names are kept.
@@ -75,7 +84,9 @@ struct FailureReport: Codable, Equatable {
 struct SortReport: Codable, Equatable {
     let id: String
     let mode: TransferMode
+    /// Short name and full path of the target folder.
     let folder: String
+    let path: String
     let dryRun: Bool
     let items: [ItemReport]
     /// Left in place because the target already holds the same content (`identical: skip`).
@@ -140,23 +151,46 @@ final class SortService {
         do { return try configStore.load() } catch { throw ServiceError.config(error.localizedDescription) }
     }
 
-    private func baseAndFolders(_ config: SorterConfig) throws -> (URL, [FolderEntry]) {
-        guard let base = config.baseURL else { throw ServiceError.noBase }
-        do { return (base, try FolderIndex.scan(base: base, exclude: config.exclude)) }
+    /// Every target folder of the configuration.
+    func targetFolders(_ config: SorterConfig) throws -> [FolderEntry] {
+        guard !config.targets.isEmpty else { throw ServiceError.noTargets }
+        do { return try FolderIndex.scan(targets: config.targetRoots, exclude: config.excludeIDs) }
         catch { throw ServiceError.config(error.localizedDescription) }
     }
 
-    func history() throws -> History { try historyStore.load() }
+    /// A folder given by its short name ("Files/30 Areas") or its path ("~/Files/30 Areas").
+    static func resolve(_ folder: String, in folders: [FolderEntry]) throws -> FolderEntry {
+        let trimmed = folder.hasSuffix("/") && folder.count > 1 ? String(folder.dropLast()) : folder
+        if let byName = folders.first(where: { $0.display == trimmed }) { return byName }
+        if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") {
+            let id = SorterConfig.folderID(trimmed)
+            if let byPath = folders.first(where: { $0.path == id }) { return byPath }
+        }
+        throw ServiceError.folderNotAllowed(folder)
+    }
+
+    /// The learned history. Older histories are keyed by paths relative to the former base folder;
+    /// they are converted to full paths once.
+    func history() throws -> History {
+        var h = try historyStore.load()
+        guard let base = try? config().legacyBase, h.hasRelativeFolders else { return h }
+        try lock.withLock {
+            h = try historyStore.load()
+            h.rebase(onto: SorterConfig.folderID(base))
+            try historyStore.save(h)
+        }
+        return h
+    }
 
     /// All target folders, or those matching `query` (same filter as the chooser), best first.
     func folders(query: String = "") throws -> FolderReport {
         let config = try config()
-        let (base, folders) = try baseAndFolders(config)
-        let candidates = folders.map { Candidate(folder: $0, score: 0, reasons: []) }
+        let folders = try targetFolders(config)
         let ranked = query.trimmingCharacters(in: .whitespaces).isEmpty
-            ? folders.map(\.path)
-            : Matcher.rank(candidates, query: query).map(\.path)
-        return FolderReport(base: base.path, folders: ranked)
+            ? folders
+            : Matcher.rank(folders.map { Candidate(folder: $0, score: 0, reasons: []) }, query: query).map(\.folder)
+        return FolderReport(targets: config.targetRoots.map(\.url.path),
+                            folders: ranked.map { FolderInfo(name: $0.display, path: $0.path) })
     }
 
     /// Suggestion for file names or paths. Existing paths tell files and folders apart; for plain
@@ -164,13 +198,14 @@ final class SortService {
     func suggest(_ namesOrPaths: [String], limit: Int = 8) throws -> SuggestReport {
         guard !namesOrPaths.isEmpty else { throw ServiceError.invalidInput("Give at least one file name or path.") }
         let config = try config()
-        let (_, folders) = try baseAndFolders(config)
+        let folders = try targetFolders(config)
         let items = namesOrPaths.map(Self.dropItem)
         let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: try history())
-        let ranked = Matcher.rank(suggestion.ranked, query: "", favorites: Set(config.favoritePaths))
-        return SuggestReport(preselected: suggestion.preselected, candidates: ranked.prefix(max(1, limit)).map {
-            CandidateReport(folder: $0.path, score: ($0.score * 100).rounded() / 100, reasons: $0.reasons,
-                            rename: config.renamePattern(forTarget: $0.path))
+        let ranked = Matcher.rank(suggestion.ranked, query: "", favorites: Set(config.favoriteIDs))
+        let preselected = suggestion.preselected.flatMap { id in folders.first { $0.path == id }?.display }
+        return SuggestReport(preselected: preselected, candidates: ranked.prefix(max(1, limit)).map {
+            CandidateReport(folder: $0.folder.display, path: $0.path, score: ($0.score * 100).rounded() / 100,
+                            reasons: $0.reasons, rename: config.renamePattern(forTarget: $0.path))
         })
     }
 
@@ -197,14 +232,14 @@ final class SortService {
 
     // MARK: Change
 
-    /// Moves or copies `paths` (absolute, existing) into `folder` (relative to the base, a real target),
+    /// Moves or copies `paths` (absolute, existing) into `folder` (short name or path of a target folder),
     /// or into the clear suggestion when `folder` is nil. `dryRun` reports the names without touching anything.
     func sort(_ paths: [String], into folder: String?, mode: TransferMode = .move, identical: IdenticalPolicy = .keep,
               dryRun: Bool = false, source: String = "cli", now: Date = Date()) throws -> SortReport {
         let outcome = try perform(paths.map(Self.existingURL), into: folder, mode: mode, identical: identical,
                                   dryRun: dryRun, source: source, now: now)
         let item = { (m: Move) in ItemReport(from: m.source.path, to: m.destination.path, identicalTo: m.identicalTo?.path) }
-        return SortReport(id: outcome.id.uuidString, mode: mode, folder: outcome.folder, dryRun: dryRun,
+        return SortReport(id: outcome.id.uuidString, mode: mode, folder: outcome.display, path: outcome.folder, dryRun: dryRun,
                           items: outcome.result.moves.map(item), skipped: outcome.result.skipped.map(item),
                           failed: outcome.result.failures.map { FailureReport(name: $0.name, reason: $0.reason) })
     }
@@ -217,21 +252,34 @@ final class SortService {
     }
 
     /// The shared implementation; the app calls it with the URLs from a drop.
+    /// `anyFolder`: an existing folder outside the targets is fine too (the app's favorite spots). The
+    /// CLI, MCP and REST never set it: they only reach the target folders.
     func perform(_ urls: [URL], into folder: String?, mode: TransferMode, identical: IdenticalPolicy = .keep,
-                 dryRun: Bool = false, source: String, now: Date = Date()) throws -> SortOutcome {
+                 anyFolder: Bool = false, dryRun: Bool = false, source: String, now: Date = Date()) throws -> SortOutcome {
         guard !urls.isEmpty else { throw ServiceError.invalidInput("Give at least one file or folder.") }
         let config = try config()
-        let (base, folders) = try baseAndFolders(config)
-        let target: String
+        let folders = try targetFolders(config)
+        let entry: FolderEntry
         if let folder {
-            let clean = folder.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard folders.contains(where: { $0.path == clean }) else { throw ServiceError.folderNotAllowed(folder) }
-            target = clean
+            if anyFolder, let found = try? Self.resolve(folder, in: folders) {
+                entry = found
+            } else if anyFolder {
+                let id = SorterConfig.folderID(folder)
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: id, isDirectory: &isDir), isDir.boolValue else { throw ServiceError.notFound(id) }
+                entry = FolderEntry(path: id, display: URL(fileURLWithPath: id).lastPathComponent)
+            } else {
+                entry = try Self.resolve(folder, in: folders)
+            }
         } else {
             let s = Matcher.suggest(Sorter.dropItems(urls), folders: folders, rules: config.matchRules, history: try history())
-            guard let p = s.preselected else { throw ServiceError.noClearSuggestion(s.ranked.prefix(3).filter { $0.score > 0 }.map(\.path)) }
-            target = p
+            guard let p = s.preselected, let e = folders.first(where: { $0.path == p }) else {
+                throw ServiceError.noClearSuggestion(s.ranked.prefix(3).filter { $0.score > 0 }.map(\.folder.display))
+            }
+            entry = e
         }
+        let target = entry.path
+        let targetURL = URL(fileURLWithPath: target, isDirectory: true)
         if dryRun {
             let pattern = config.renamePattern(forTarget: target)
             var result = MoveResult(mode: mode)
@@ -239,10 +287,10 @@ final class SortService {
                 let isDir = (try? u.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 do {
                     let name = try pattern.map { try Renamer.render($0, originalName: u.lastPathComponent, isDirectory: isDir, date: now) } ?? u.lastPathComponent
-                    let dest = Renamer.uniqueDestination(in: base.appendingPathComponent(target), name: name, isDirectory: isDir) {
+                    let dest = Renamer.uniqueDestination(in: targetURL, name: name, isDirectory: isDir) {
                         FileManager.default.fileExists(atPath: $0.path)
                     }
-                    let twin = isDir ? nil : Identical.find(u, in: base.appendingPathComponent(target))
+                    let twin = isDir ? nil : Identical.find(u, in: targetURL)
                     if let twin, identical == .skip {
                         result.skipped.append(Move(source: u, destination: u, identicalTo: twin))
                     } else {
@@ -252,14 +300,15 @@ final class SortService {
                     result.failures.append((u.lastPathComponent, error.localizedDescription))
                 }
             }
-            return SortOutcome(folder: target, target: base.appendingPathComponent(target), result: result)
+            return SortOutcome(folder: target, target: targetURL, result: result, display: entry.display)
         }
         return try lock.withLock {
             var history = try historyStore.load()
+            if let base = config.legacyBase, history.hasRelativeFolders { history.rebase(onto: SorterConfig.folderID(base)) }
             // Forget folders that were renamed or deleted since.
             history.prune(keeping: Set(folders.map(\.path)))
-            let outcome = Sorter.sort(urls, into: target, base: base, config: config, mode: mode, identical: identical,
-                                      history: &history, now: now)
+            let outcome = Sorter.sort(urls, into: target, display: entry.display, config: config, mode: mode,
+                                      identical: identical, history: &history, now: now)
             try historyStore.save(history)
             // An operation that changed nothing leaves the previous one undoable.
             if !outcome.result.moves.isEmpty { try journalStore.save(JournalEntry(outcome, source: source, date: now)) }
@@ -290,8 +339,9 @@ final class SortService {
                 }
             }
             try historyStore.save(history)
-            try journalStore.save(kept.isEmpty ? nil : JournalEntry(id: entry.id, date: entry.date, folder: entry.folder,
-                                                                     mode: entry.mode, moves: kept, source: entry.source))
+            var rest = JournalEntry(id: entry.id, date: entry.date, folder: entry.folder, mode: entry.mode, moves: kept, source: entry.source)
+            rest.display = entry.display
+            try journalStore.save(kept.isEmpty ? nil : rest)
             return removed
         }
     }
@@ -311,7 +361,7 @@ final class SortService {
             let back = Sorter.undo(outcome, history: &history, removeCopy: removeCopy)
             try historyStore.save(history)
             try journalStore.save(nil)
-            return UndoReport(id: entry.id.uuidString, mode: entry.mode, folder: entry.folder,
+            return UndoReport(id: entry.id.uuidString, mode: entry.mode, folder: entry.display ?? entry.folder,
                               items: back.moves.map { ItemReport(from: $0.source.path, to: $0.destination.path) },
                               failed: back.failures.map { FailureReport(name: $0.name, reason: $0.reason) })
         }

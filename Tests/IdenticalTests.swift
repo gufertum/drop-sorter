@@ -60,9 +60,9 @@ func identicalServiceTests() throws {
     try touch(dl.appendingPathComponent("note.pdf"), "a note")
 
     // Dry run already tells; the real run reports identicalTo; Delete Duplicates trashes only those.
-    let dry = try service.sort([dl.appendingPathComponent("bill.pdf").path], into: "Bills", dryRun: true)
+    let dry = try service.sort([dl.appendingPathComponent("bill.pdf").path], into: "Files/Bills", dryRun: true)
     eq(dry.items.first?.identicalTo.map { ($0 as NSString).lastPathComponent }, "2025_bill.pdf")
-    let r = try service.sort([dl.appendingPathComponent("bill.pdf").path, dl.appendingPathComponent("note.pdf").path], into: "Bills")
+    let r = try service.sort([dl.appendingPathComponent("bill.pdf").path, dl.appendingPathComponent("note.pdf").path], into: "Files/Bills")
     eq(r.items.compactMap { $0.identicalTo.map { ($0 as NSString).lastPathComponent } }, ["2025_bill.pdf"])
     do {
         _ = try service.removeIdentical(id: "00000000-0000-0000-0000-000000000000")
@@ -81,7 +81,7 @@ func identicalServiceTests() throws {
 
     // skip through the service: reported, nothing moved, no journal entry.
     try touch(dl.appendingPathComponent("bill again.pdf"), "the bill")
-    let skipped = try service.sort([dl.appendingPathComponent("bill again.pdf").path], into: "Bills", identical: .skip)
+    let skipped = try service.sort([dl.appendingPathComponent("bill again.pdf").path], into: "Files/Bills", identical: .skip)
     eq(skipped.items.count, 0)
     eq(skipped.skipped.count, 1)
     eq(try service.lastOperation(), nil)

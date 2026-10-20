@@ -32,7 +32,8 @@ enum CLI {
       --skip-identical  move/copy: leave files whose content is already in the target folder
       --limit N     suggest: number of candidates (default 8)
 
-    FOLDER is relative to the base folder, e.g. "30 Areas/Finance". Config and history live in
+    FOLDER is a short name as `dropsorter folders` prints it (e.g. "Files/30 Areas/Finance") or a full
+    path inside one of the target folders. Config and history live in
     ~/Library/Application Support/li.sudo.dropsorter (or $DROPSORTER_HOME).
     Exit status: 0 ok, 1 some items failed, 2 usage, 3 configuration, 4 no clear suggestion, 5 nothing to undo.
     """
@@ -101,7 +102,7 @@ enum CLI {
             switch command {
             case "folders":
                 let r = try service.folders(query: o.query)
-                out(o.json ? try encode(r) : r.folders.joined(separator: "\n"))
+                out(o.json ? try encode(r) : r.folders.map(\.name).joined(separator: "\n"))
             case "suggest":
                 let r = try service.suggest(o.positional, limit: o.limit)
                 out(o.json ? try encode(r) : text(r))
@@ -147,7 +148,7 @@ enum CLI {
 
     static func exitCode(for e: ServiceError?) -> Exit {
         switch e {
-        case .config, .noBase: return .config
+        case .config, .noTargets: return .config
         case .noClearSuggestion: return .unclear
         case .nothingToUndo, .staleUndo: return .nothingToUndo
         default: return .usage
@@ -197,7 +198,7 @@ enum CLI {
 
     static func text(_ e: JournalEntry) -> String {
         let when = ISO8601DateFormatter().string(from: e.date)
-        return (["\(e.mode.pastTense) \(e.moves.count) item\(e.moves.count == 1 ? "" : "s") to \(e.folder) at \(when) via \(e.source) (id \(e.id.uuidString))"]
+        return (["\(e.mode.pastTense) \(e.moves.count) item\(e.moves.count == 1 ? "" : "s") to \(e.display ?? e.folder) at \(when) via \(e.source) (id \(e.id.uuidString))"]
             + e.moves.map { "  \($0.source.path) → \($0.destination.path)" }).joined(separator: "\n")
     }
 }

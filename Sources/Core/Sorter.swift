@@ -4,12 +4,23 @@ import Foundation
 struct SortOutcome {
     /// Tells operations apart, so an Undo button of an older toast cannot undo a newer drop.
     var id = UUID()
+    /// Id (full path) of the target folder.
     let folder: String
     let target: URL
     var result: MoveResult
+    /// Short name of the target folder for messages.
+    var display: String
+
+    init(id: UUID = UUID(), folder: String, target: URL, result: MoveResult, display: String? = nil) {
+        self.id = id
+        self.folder = folder
+        self.target = target
+        self.result = result
+        self.display = display ?? folder
+    }
 }
 
-/// Glue between the chooser and the file system: moves into a folder below the base with the right rename
+/// Glue between the chooser and the file system: moves into a target folder with the right rename
 /// pattern and keeps the history in step, including Undo.
 enum Sorter {
     static func dropItems(_ urls: [URL]) -> [DropItem] {
@@ -19,14 +30,15 @@ enum Sorter {
         }
     }
 
-    /// Moves `urls` into `folder` (relative to the base), renamed by the rename rule that covers the
-    /// folder, if any. Each moved item is recorded in `history` under the words of its original name.
-    static func sort(_ urls: [URL], into folder: String, base: URL, config: SorterConfig, mode: TransferMode = .move,
-                     identical: IdenticalPolicy = .keep, history: inout History, now: Date = Date()) -> SortOutcome {
-        let target = base.appendingPathComponent(folder, isDirectory: true)
+    /// Moves `urls` into `folder` (its full path), renamed by the rename rule that covers the folder, if
+    /// any. Each moved item is recorded in `history` under the words of its original name.
+    static func sort(_ urls: [URL], into folder: String, display: String? = nil, config: SorterConfig,
+                     mode: TransferMode = .move, identical: IdenticalPolicy = .keep, history: inout History,
+                     now: Date = Date()) -> SortOutcome {
+        let target = URL(fileURLWithPath: folder, isDirectory: true)
         let result = Mover.move(urls, to: target, pattern: config.renamePattern(forTarget: folder), mode: mode, identical: identical, now: now)
         for m in result.moves { history.record(tokens: words(m.source), folder: folder) }
-        return SortOutcome(folder: folder, target: target, result: result)
+        return SortOutcome(folder: folder, target: target, result: result, display: display)
     }
 
     /// Moves everything back (or removes the copies) and takes the history entries back for the items

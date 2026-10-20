@@ -77,7 +77,7 @@ func yamlTests() throws {
 
     // Writer: round trip, quoting only where needed.
     var c = SorterConfig()
-    c.base = "~/Documents/Files"
+    c.targets = ["~/Documents/Files", Target(path: "/Volumes/Archive", subfolders: false)]
     c.renameRules = ["90 Archive": RenameRule(pattern: Renamer.defaultPattern), "90 Archive/Keep": "{original}",
                      "00 Inbox": RenameRule(pattern: "{date}_{name}{ext}", subfolders: false)]
     c.favorites = ["00 Inbox", "2026", "true", "- dash", "a: b", " pad"]
@@ -87,7 +87,7 @@ func yamlTests() throws {
     c.menuBarIcon = true
     let text = try YAML.encode(c, keyOrder: SorterConfigStore.keyOrder)
     eq(try YAML.decode(SorterConfig.self, from: text), c)
-    check(text.hasPrefix("base: ~/Documents/Files\nrenameRules:\n  00 Inbox:\n    pattern: \"{date}_{name}{ext}\"\n    subfolders: false\n  90 Archive: \"{date}_{time}_{name}{ext}\"\n  90 Archive/Keep: \"{original}\"\n"), "key order and plain scalars:\n\(text)")
+    check(text.hasPrefix("targets:\n  - ~/Documents/Files\n  - path: /Volumes/Archive\n    subfolders: false\nrenameRules:\n  00 Inbox:\n    pattern: \"{date}_{name}{ext}\"\n    subfolders: false\n  90 Archive: \"{date}_{time}_{name}{ext}\"\n  90 Archive/Keep: \"{original}\"\n"), "key order and plain scalars:\n\(text)")
     check(text.contains("  - \"2026\"\n  - \"true\"\n  - \"- dash\"\n  - \"a: b\"\n  - \" pad\"\n"), "quoted where needed:\n\(text)")
     check(text.contains("exclude: []\n"), "empty list inline")
     eq(try YAML.encode(["k": [["a": [1], "b": [2, 3]]]]), "k:\n  - a:\n      - 1\n    b:\n      - 2\n      - 3\n")
@@ -103,7 +103,7 @@ func sorterConfigStoreTests() throws {
     eq(try store.load(), SorterConfig())
     eq(store.activeURL, nil)
     var c = SorterConfig()
-    c.base = "~/Files"
+    c.targets = ["~/Files"]
     try store.save(c)
     eq(store.activeURL, store.yamlURL)
     eq(try store.load(), c)
@@ -111,16 +111,17 @@ func sorterConfigStoreTests() throws {
     // JSON only: read and saved back as JSON.
     try fm.removeItem(at: store.yamlURL)
     try Data(#"{"base": "~/FromJSON", "favorites": ["00 Inbox"]}"#.utf8).write(to: store.jsonURL)
-    eq(try store.load().base, "~/FromJSON")
-    c.base = "~/Saved"
+    eq(try store.load().targets, ["~/FromJSON"])
+    eq(try store.load().favorites, ["~/FromJSON/00 Inbox"])
+    c.targets = ["~/Saved"]
     try store.save(c)
     eq(store.activeURL, store.jsonURL)
     check(fm.fileExists(atPath: store.yamlURL.path) == false, "no YAML created next to JSON")
-    eq(try store.load().base, "~/Saved")
+    eq(try store.load().targets, ["~/Saved"])
 
     // Both: YAML wins.
     try Data("base: ~/FromYAML\n".utf8).write(to: store.yamlURL)
-    eq(try store.load().base, "~/FromYAML")
+    eq(try store.load().targets, ["~/FromYAML"])
 
     // Broken or invalid files throw with the path and a readable reason; nothing is reset.
     func reason(_ yaml: String) -> String {
@@ -131,11 +132,11 @@ func sorterConfigStoreTests() throws {
     eq(reason("favorites:\n  - 2026\n"), "favorites[0]: expected text (quote values such as 2026 or true to keep them as text)")
     eq(reason("menuBarIcon: yes\n"), "menuBarIcon: expected true or false")
     eq(reason("archive:\n  pattern: x\n"), "archive: missing key 'folder'")
-    eq(reason("renameRules:\n  90 Archive: \"{nope}\"\n"), SorterConfigError.invalidPattern("{nope}", "Unknown token {nope}.").errorDescription!)
+    eq(reason("renameRules:\n  /A: \"{nope}\"\n"), SorterConfigError.invalidPattern("{nope}", "Unknown token {nope}.").errorDescription!)
     eq(reason("base: [\n"), "YAML line 1: unterminated flow collection (it must close on the same line)")
-    eq(reason("favorites: [/abs]\n"), SorterConfigError.notRelative("/abs").errorDescription!)
-    eq(try String(contentsOf: store.yamlURL, encoding: .utf8), "favorites: [/abs]\n")
-    check((try? store.save({ var x = SorterConfig(); x.favorites = ["/abs"]; return x }())) == nil, "invalid config not saved")
+    eq(reason("favorites: [rel]\n"), SorterConfigError.notAbsolute("rel").errorDescription!)
+    eq(try String(contentsOf: store.yamlURL, encoding: .utf8), "favorites: [rel]\n")
+    check((try? store.save({ var x = SorterConfig(); x.favorites = ["rel"]; return x }())) == nil, "invalid config not saved")
 
     // Saving over a hand-written file keeps a copy of it; files the app wrote itself are not backed up.
     let handWritten = "# my files\nbase: ~/Files   # comment\n"

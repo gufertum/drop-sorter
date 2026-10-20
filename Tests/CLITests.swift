@@ -40,8 +40,8 @@ func cliTests() throws {
     let scan = downloads.appendingPathComponent("scan.pdf").path
 
     // Parsing.
-    let (cmd, o) = try CLI.parse(["move", "--to", "00 Inbox", "--json", "-n", "a", "--", "-b"])
-    eq(cmd, "move"); eq(o.to, "00 Inbox"); eq(o.json, true); eq(o.dryRun, true); eq(o.positional, ["a", "-b"])
+    let (cmd, o) = try CLI.parse(["move", "--to", "Files/00 Inbox", "--json", "-n", "a", "--", "-b"])
+    eq(cmd, "move"); eq(o.to, "Files/00 Inbox"); eq(o.json, true); eq(o.dryRun, true); eq(o.positional, ["a", "-b"])
     eq(run(service, "move", "--bogus").0, 2)
     eq(run(service).0, 2)
     eq(run(service, "help").0, 0)
@@ -50,13 +50,13 @@ func cliTests() throws {
     // folders: hidden folders are no targets; the filter ranks like the chooser.
     let f = run(service, "folders")
     eq(f.0, 0)
-    eq(f.1.split(separator: "\n").map(String.init), ["00 Inbox", "30 Areas", "30 Areas/Finance", "30 Areas/Finance/Invoices", "30 Areas/Finance/Taxes", "90 Archive"])
-    eq(run(service, "folders", "-q", "tax").1, "30 Areas/Finance/Taxes\n")
+    eq(f.1.split(separator: "\n").map(String.init), ["Files", "Files/00 Inbox", "Files/30 Areas", "Files/30 Areas/Finance", "Files/30 Areas/Finance/Invoices", "Files/30 Areas/Finance/Taxes", "Files/90 Archive"])
+    eq(run(service, "folders", "-q", "tax").1, "Files/30 Areas/Finance/Taxes\n")
 
     // suggest: text and JSON.
     let s = run(service, "suggest", "--json", inv)
     let report = try JSONDecoder().decode(SuggestReport.self, from: Data(s.1.utf8))
-    eq(report.preselected, "30 Areas/Finance/Invoices")
+    eq(report.preselected, "Files/30 Areas/Finance/Invoices")
     check(run(service, "suggest", "IMG_1.heic").1.hasPrefix("preselected: none"), "no clear match in text output")
     eq(run(service, "suggest").0, 2)
 
@@ -70,14 +70,14 @@ func cliTests() throws {
     eq(run(service, "move", "--to", ".hidden", scan).0, 2)
     eq(run(service, "move", "--to", "../Downloads", scan).0, 2)
     eq(run(service, "move", "--to", "Nope", scan).0, 2)
-    eq(run(service, "move", "--to", "00 Inbox", "relative.pdf").0, 2)
-    eq(run(service, "move", "--to", "00 Inbox", downloads.appendingPathComponent("gone.pdf").path).0, 2)
-    eq(run(service, "move", "--to", "00 Inbox", "--auto", scan).0, 2)
+    eq(run(service, "move", "--to", "Files/00 Inbox", "relative.pdf").0, 2)
+    eq(run(service, "move", "--to", "Files/00 Inbox", downloads.appendingPathComponent("gone.pdf").path).0, 2)
+    eq(run(service, "move", "--to", "Files/00 Inbox", "--auto", scan).0, 2)
 
     // Dry run: names only.
-    let dry = run(service, "copy", "--dry-run", "--to", "90 Archive", scan)
+    let dry = run(service, "copy", "--dry-run", "--to", "Files/90 Archive", scan)
     eq(dry.0, 0)
-    check(dry.1.contains("Would copy 1 item to 90 Archive") && dry.1.contains("_scan.pdf"), dry.1)
+    check(dry.1.contains("Would copy 1 item to Files/90 Archive") && dry.1.contains("_scan.pdf"), dry.1)
     eq(try fm.contentsOfDirectory(atPath: root.appendingPathComponent("Files/90 Archive").path), [])
     eq(try service.lastOperation(), nil)
 
@@ -85,14 +85,15 @@ func cliTests() throws {
     let moved = run(service, "move", "--auto", "--json", inv)
     eq(moved.0, 0)
     let sr = try JSONDecoder().decode(SortReport.self, from: Data(moved.1.utf8))
-    eq(sr.folder, "30 Areas/Finance/Invoices")
+    eq(sr.folder, "Files/30 Areas/Finance/Invoices")
     check(fm.fileExists(atPath: root.appendingPathComponent("Files/30 Areas/Finance/Invoices/invoices-hetzner.pdf").path), "moved")
-    eq(try service.history().count("hetzner", "30 Areas/Finance/Invoices"), 1)
+    let id = { (rel: String) in root.appendingPathComponent(rel).path }
+    eq(try service.history().count("hetzner", id("Files/30 Areas/Finance/Invoices")), 1)
     eq(try service.lastOperation()?.id.uuidString, sr.id)
     check(run(service, "last").1.contains("via cli"), "last shows the source")
 
     // A newer copy replaces the journal entry: the older move cannot be undone any more.
-    let copied = run(service, "copy", "--to", "90 Archive", "--json", scan)
+    let copied = run(service, "copy", "--to", "Files/90 Archive", "--json", scan)
     let cr = try JSONDecoder().decode(SortReport.self, from: Data(copied.1.utf8))
     check(fm.fileExists(atPath: scan), "copy keeps the original")
     eq(run(service, "undo", "--id", sr.id).0, 5)
@@ -106,19 +107,22 @@ func cliTests() throws {
 
     // Undo of a move restores the file and forgets the history entry.
     try touch(downloads.appendingPathComponent("tax-2025.pdf"))
-    let tax = run(service, "move", "--to", "30 Areas/Finance/Taxes", downloads.appendingPathComponent("tax-2025.pdf").path)
+    let tax = run(service, "move", "--to", "Files/30 Areas/Finance/Taxes", downloads.appendingPathComponent("tax-2025.pdf").path)
     eq(tax.0, 0)
-    eq(try service.history().count("tax", "30 Areas/Finance/Taxes"), 1)
+    eq(try service.history().count("tax", id("Files/30 Areas/Finance/Taxes")), 1)
     eq(run(service, "undo").0, 0)
     check(fm.fileExists(atPath: downloads.appendingPathComponent("tax-2025.pdf").path), "undo restored")
-    eq(try service.history().count("tax", "30 Areas/Finance/Taxes"), 0)
+    eq(try service.history().count("tax", id("Files/30 Areas/Finance/Taxes")), 0)
 
     // JSON errors carry a code.
     let e = run(service, "undo", "--json")
     check(e.1.contains("\"code\" : \"nothing_to_undo\""), e.1)
 
     // config and drop-apps.
-    check(run(service, "config").1.contains("90 Archive: \"{date:yyyy}_{name}{ext}\""), "config as YAML")
+    check(run(service, "config").1.contains("/Files/90 Archive: \"{date:yyyy}_{name}{ext}\""), "config as YAML")
+    // Folders can also be given by full path.
+    try touch(downloads.appendingPathComponent("by-path.pdf"))
+    eq(run(service, "move", "--to", id("Files/00 Inbox"), downloads.appendingPathComponent("by-path.pdf").path).0, 0)
     eq(run(service, "drop-apps", "--json").1, "[\n\n]\n")
 
     // Broken config: exit 3, the file is not touched.

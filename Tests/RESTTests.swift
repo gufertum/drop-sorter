@@ -44,9 +44,9 @@ func restTests() throws {
     eq(req("GET", "/v1/folders", auth: token).0, 401)
 
     // Routes.
-    eq(req("GET", "/v1/folders", query: ["q": "inv"]).1["folders"] as? [String], ["30 Areas/Finance/Invoices"])
+    eq((req("GET", "/v1/folders", query: ["q": "inv"]).1["folders"] as? [[String: Any]])?.compactMap { $0["name"] as? String }, ["Files/30 Areas/Finance/Invoices"])
     eq(req("GET", "/v1/folders/").0, 200)
-    eq(req("POST", "/v1/suggest", #"{"names":["invoices-acme.pdf"]}"#).1["preselected"] as? String, "30 Areas/Finance/Invoices")
+    eq(req("POST", "/v1/suggest", #"{"names":["invoices-acme.pdf"]}"#).1["preselected"] as? String, "Files/30 Areas/Finance/Invoices")
     eq(req("DELETE", "/v1/folders").0, 405)
     eq(req("GET", "/v2/x").0, 404)
     eq(code(req("POST", "/v1/suggest", "{bad")), "invalid_input")
@@ -64,8 +64,8 @@ func restTests() throws {
     eq((req("GET", "/v1/last").1["operation"] as? [String: Any])?["source"] as? String, "api")
 
     // Config error: 503, nothing changed.
-    try Data("favorites: [00 Inbox]\n".utf8).write(to: home.appendingPathComponent("config.yaml"))
-    eq(code(req("GET", "/v1/folders")), "no_base_folder")
+    try Data("favorites: [~/x]\n".utf8).write(to: home.appendingPathComponent("config.yaml"))
+    eq(code(req("GET", "/v1/folders")), "no_target_folders")
     eq(req("GET", "/v1/folders").0, 503)
     try Data("base: \(base.path)\n".utf8).write(to: home.appendingPathComponent("config.yaml"))
 
@@ -105,5 +105,5 @@ func restTests() throws {
     }.resume()
     _ = done.wait(timeout: .now() + 5)
     eq(status, 200)
-    eq(((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])?["preselected"] as? String, "30 Areas/Finance/Invoices")
+    eq(((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])?["preselected"] as? String, "Files/30 Areas/Finance/Invoices")
 }

@@ -1,6 +1,7 @@
 import Foundation
 
-/// One possible target: a folder relative to the base folder, "/"-separated, e.g. "30 Areas/Finance/Invoices".
+/// One possible target folder. `path` is its id (full path); `display` the short name shown to people:
+/// the target folder's name and the path below it, e.g. "Files/30 Areas/Finance/Invoices".
 struct FolderEntry: Equatable {
     /// How many files of one kind a folder holds, and one of them to show as an example.
     struct Sample: Equatable {
@@ -9,9 +10,10 @@ struct FolderEntry: Equatable {
     }
 
     let path: String
+    let display: String
     let leafTokens: [String]
     let parentTokens: [String]
-    /// Folded path with a trailing "/", what the filter matches against.
+    /// Folded display name with a trailing "/", what the filter matches against.
     let normalized: String
     /// Names of the files directly in the folder, as far as the index collected them.
     let files: [String]
@@ -20,12 +22,16 @@ struct FolderEntry: Equatable {
     /// "word.ext" -> files with that significant word and extension.
     let fileWords: [String: Sample]
 
-    init(path: String, files: [String] = []) {
+    /// Without `display`, the path is shown as it is (tests, relative paths).
+    init(path: String, display: String? = nil, files: [String] = []) {
         self.path = path
-        let segments = path.split(separator: "/").map(String.init)
+        let shown = display ?? path
+        self.display = shown
+        // Words come from the short name, not from /Users/me/Documents.
+        let segments = shown.split(separator: "/").map(String.init)
         leafTokens = Tokenizer.tokens(segments.last ?? "")
         parentTokens = Tokenizer.tokens(segments.dropLast().joined(separator: " "))
-        normalized = Tokenizer.fold(path) + "/"
+        normalized = Tokenizer.fold(shown) + "/"
         self.files = files
         var shapes: [String: Sample] = [:]
         var words: [String: Sample] = [:]
@@ -152,7 +158,7 @@ enum Matcher {
             .compactMap { c in filterScore(c.folder.normalized, terms).map { (c, Double($0) * 10 + c.score) } }
             .sorted { a, b in
                 if a.1 != b.1 { return a.1 > b.1 }
-                if a.0.path.count != b.0.path.count { return a.0.path.count < b.0.path.count }
+                if a.0.folder.display.count != b.0.folder.display.count { return a.0.folder.display.count < b.0.folder.display.count }
                 return a.0.path < b.0.path
             }
             .map(\.0)

@@ -2,8 +2,8 @@
 
 Drop Sorter: a macOS agent app (Swift 5 language mode, AppKit, no Xcode project, no dependencies).
 A general-purpose file mover: a shelf shown while Finder is active takes dropped files and moves them
-into a subfolder of a configured base folder, chosen with a name-based suggestion and a filter. Keep
-docs and UI free of any particular notes app; say "base folder", not "vault". The repository also contains Drop
+into one of the configured target folders (or a folder inside one), chosen with a name-based suggestion
+and a filter. Keep docs and UI free of any particular notes app; say "target folder", not "vault". The repository also contains Drop
 Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter generates, updates and adopts.
 User-facing docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
 Original concept (written for an Obsidian vault, before the app became general purpose): https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
@@ -18,7 +18,7 @@ Original concept (written for an Obsidian vault, before the app became general p
 - `Sources/DropSorter/` Drop Sorter agent app: FrontmostWatcher, ShelfPanel (main and favorite spots),
   ChooserPanel, SortToast, SettingsWindow, MenuBarItem, main.
   `Resources/DropSorter/Info.plist` (`LSUIElement`). `DROPSORTER_HOME=<dir>` replaces the Application Support
-  folder, for manual tests with a sample base folder: `open -n --env DROPSORTER_HOME=<dir> "build/Drop Sorter.app"`.
+  folder, for manual tests with sample target folders: `open -n --env DROPSORTER_HOME=<dir> "build/Drop Sorter.app"`.
 - `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
 - `Sources/CLI/` the `dropsorter` binary (thin: `CLI.swift` in Core parses and runs the commands).
 - `Tools/` make-icon (iconset).
@@ -59,7 +59,10 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - **One engine**: `SortService` serves the app, the CLI, MCP and REST. It re-reads the config per call,
   updates history and the undo journal (`journal.json`, only the last operation) under `FileLock`,
   and never changes the configuration. New sort/undo behaviour goes there, not into a front end.
-- The base folder is rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
+- **Folder ids are full paths** (`SorterConfig.folderID`); people see `FolderEntry.display` (target name +
+  path inside). Config entries are full paths (`~/` allowed); the old `base` key is converted on load
+  (`legacyBase`), history keys too (`History.rebase`). Never reintroduce base-relative paths.
+- The target folders are rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
   watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
 - The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
 - **Index performance**: keep per-file work cheap in `FolderIndex.scan` (byte-wise path math against

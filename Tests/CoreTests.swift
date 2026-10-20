@@ -145,68 +145,91 @@ func sorterConfigTests() throws {
     eq(try JSONDecoder().decode(SorterConfig.self, from: Data(#"{"menuBarIcon": false}"#.utf8)).menuBarIcon, false)
     try empty.validate()
 
+    // An older file with a base folder: the base becomes the first target, relative entries become
+    // full paths below it; nothing about the base is written back.
     let json = """
-    {"base": "~/Documents/Files",
+    {"base": "/Base",
      "renameRules": {"90 Archive": "{date}_{time}_{name}{ext}", "90 Archive/Keep": "{original}",
                      "40 Resources/Scans": "{date:yyyyMMdd}-{name}{ext}",
                      "00 Inbox": {"pattern": "{date}_{name}{ext}", "subfolders": false},
                      "00 Inbox/Mail": {"pattern": "{name}{ext}"}},
      "favorites": ["00 Inbox", {"folder": "80 Backup", "copy": true}],
+     "exclude": ["50 Attachments/_cache"],
+     "aliases": {"30 Areas/Finance/Invoices": ["rechnung"]},
      "extensionRules": {"heic .JPG, png": "50 Attachments/Images"},
      "suggest": {"minScore": 2, "minMargin": 0.5}}
     """
     let cfg = try JSONDecoder().decode(SorterConfig.self, from: Data(json.utf8))
     try cfg.validate()
-    eq(cfg.baseURL?.path, NSString(string: "~/Documents/Files").expandingTildeInPath)
+    eq(cfg.targets, ["/Base"])
+    eq(cfg.legacyBase, "/Base")
+    eq(cfg.targetRoots.map(\.url.path), ["/Base"])
+    eq(cfg.exclude, ["/Base/50 Attachments/_cache"])
+    eq(Array(cfg.aliases.keys), ["/Base/30 Areas/Finance/Invoices"])
+    let written = String(decoding: try JSONEncoder().encode(cfg), as: UTF8.self)
+    check(!written.contains("\"base\"") && !written.contains("legacyBase") && written.contains("\"targets\""), written)
     // A rule covers its subfolders; the most specific rule wins; {original} keeps names.
-    eq(cfg.renamePattern(forTarget: "90 Archive"), Renamer.defaultPattern)
-    eq(cfg.renamePattern(forTarget: "90 Archive/2026"), Renamer.defaultPattern)
-    eq(cfg.renamePattern(forTarget: "90 Archive/Keep"), nil)
-    eq(cfg.renamePattern(forTarget: "90 Archive/Keep/Sub"), nil)
-    eq(cfg.renameRule(forTarget: "90 Archive/Keep/Sub")?.folder, "90 Archive/Keep")
-    eq(cfg.renamePattern(forTarget: "40 Resources/Scans"), "{date:yyyyMMdd}-{name}{ext}")
-    eq(cfg.renamePattern(forTarget: "40 Resources"), nil)
-    eq(cfg.renamePattern(forTarget: "90 Archived"), nil)
+    eq(cfg.renamePattern(forTarget: "/Base/90 Archive"), Renamer.defaultPattern)
+    eq(cfg.renamePattern(forTarget: "/Base/90 Archive/2026"), Renamer.defaultPattern)
+    eq(cfg.renamePattern(forTarget: "/Base/90 Archive/Keep"), nil)
+    eq(cfg.renamePattern(forTarget: "/Base/90 Archive/Keep/Sub"), nil)
+    eq(cfg.renameRule(forTarget: "/Base/90 Archive/Keep/Sub")?.folder, "/Base/90 Archive/Keep")
+    eq(cfg.renamePattern(forTarget: "/Base/40 Resources/Scans"), "{date:yyyyMMdd}-{name}{ext}")
+    eq(cfg.renamePattern(forTarget: "/Base/40 Resources"), nil)
+    eq(cfg.renamePattern(forTarget: "/Base/90 Archived"), nil)
     // A rule for this exact folder only: its subfolders keep their names unless they have their own rule.
-    eq(cfg.renameRules["00 Inbox"], RenameRule(pattern: "{date}_{name}{ext}", subfolders: false))
-    eq(cfg.renamePattern(forTarget: "00 Inbox"), "{date}_{name}{ext}")
-    eq(cfg.renamePattern(forTarget: "00 Inbox/Scans"), nil)
-    eq(cfg.renamePattern(forTarget: "00 Inbox/Mail/2026"), "{name}{ext}")
+    eq(cfg.renameRules["/Base/00 Inbox"], RenameRule(pattern: "{date}_{name}{ext}", subfolders: false))
+    eq(cfg.renamePattern(forTarget: "/Base/00 Inbox"), "{date}_{name}{ext}")
+    eq(cfg.renamePattern(forTarget: "/Base/00 Inbox/Scans"), nil)
+    eq(cfg.renamePattern(forTarget: "/Base/00 Inbox/Mail/2026"), "{name}{ext}")
+    // "~" and trailing slashes name the same folder.
+    var tilde = SorterConfig()
+    tilde.renameRules = ["~/Docs/": "{date}_{name}{ext}"]
+    eq(tilde.renamePattern(forTarget: NSHomeDirectory() + "/Docs/Sub"), "{date}_{name}{ext}")
     // An exact-only rule below a recursive one: the recursive rule still covers the deeper folders.
     var nested = SorterConfig()
-    nested.renameRules = ["A": "{date}_{name}{ext}", "A/B": RenameRule(pattern: "{original}", subfolders: false)]
-    eq(nested.renamePattern(forTarget: "A/B"), nil)
-    eq(nested.renamePattern(forTarget: "A/B/C"), "{date}_{name}{ext}")
+    nested.renameRules = ["/A": "{date}_{name}{ext}", "/A/B": RenameRule(pattern: "{original}", subfolders: false)]
+    eq(nested.renamePattern(forTarget: "/A/B"), nil)
+    eq(nested.renamePattern(forTarget: "/A/B/C"), "{date}_{name}{ext}")
     // Short form when it covers subfolders, long form otherwise.
-    eq(String(decoding: try JSONEncoder().encode(nested.renameRules["A/B"]), as: UTF8.self).contains("subfolders"), true)
-    eq(String(decoding: try JSONEncoder().encode(nested.renameRules["A"]), as: UTF8.self), #""{date}_{name}{ext}""#)
+    eq(String(decoding: try JSONEncoder().encode(nested.renameRules["/A/B"]), as: UTF8.self).contains("subfolders"), true)
+    eq(String(decoding: try JSONEncoder().encode(nested.renameRules["/A"]), as: UTF8.self), #""{date}_{name}{ext}""#)
+
+    // Targets: path, or {path, subfolders: false}.
+    let t = try JSONDecoder().decode(SorterConfig.self, from: Data(#"{"targets": ["~/A", {"path": "/B", "subfolders": false}]}"#.utf8))
+    eq(t.targets, [Target(path: "~/A"), Target(path: "/B", subfolders: false)])
+    eq(t.targetRoots.map(\.subfolders), [true, false])
+    eq(t.legacyBase, nil)
 
     // The old single archive folder is read as a rule (pattern optional) and written back as renameRules.
-    let legacy = try JSONDecoder().decode(SorterConfig.self, from: Data(#"{"archive": {"folder": "90 Archive"}}"#.utf8))
-    eq(legacy.renameRules, ["90 Archive": RenameRule(pattern: Renamer.defaultPattern)])
+    let legacy = try JSONDecoder().decode(SorterConfig.self, from: Data(#"{"base": "/B", "archive": {"folder": "90 Archive"}}"#.utf8))
+    eq(legacy.renameRules, ["/B/90 Archive": RenameRule(pattern: Renamer.defaultPattern)])
     let legacyWithPattern = try JSONDecoder().decode(SorterConfig.self, from: Data(
-        #"{"archive": {"folder": "A", "pattern": "{name}{ext}"}, "renameRules": {"B": "{date}_{name}{ext}"}}"#.utf8))
-    eq(legacyWithPattern.renameRules, ["A": "{name}{ext}", "B": "{date}_{name}{ext}"])
+        #"{"archive": {"folder": "/A", "pattern": "{name}{ext}"}, "renameRules": {"/B": "{date}_{name}{ext}"}}"#.utf8))
+    eq(legacyWithPattern.renameRules, ["/A": "{name}{ext}", "/B": "{date}_{name}{ext}"])
     let reencoded = String(decoding: try JSONEncoder().encode(legacy), as: UTF8.self)
     check(!reencoded.contains("archive\""), "archive key not written back: \(reencoded)")
     check(reencoded.contains("renameRules"), "renameRules written")
-    eq(cfg.matchRules.extensions, ["heic": "50 Attachments/Images", "jpg": "50 Attachments/Images", "png": "50 Attachments/Images"])
+    eq(cfg.matchRules.extensions, ["heic": "/Base/50 Attachments/Images", "jpg": "/Base/50 Attachments/Images", "png": "/Base/50 Attachments/Images"])
+    eq(cfg.matchRules.aliases, ["/Base/30 Areas/Finance/Invoices": ["rechnung"]])
     eq(cfg.matchRules.minScore, 2)
-    eq(cfg.favorites, ["00 Inbox", Favorite(folder: "80 Backup", copy: true)])
-    eq(cfg.favoritePaths, ["00 Inbox", "80 Backup"])
+    eq(cfg.favorites, ["/Base/00 Inbox", Favorite(folder: "/Base/80 Backup", copy: true)])
+    eq(cfg.favoriteIDs, ["/Base/00 Inbox", "/Base/80 Backup"])
     eq(cfg.favorites.map(\.mode), [.move, .copy])
     // Short form unless it copies.
     let sorted = JSONEncoder()
-    sorted.outputFormatting = .sortedKeys
-    eq(String(decoding: try sorted.encode(cfg.favorites), as: UTF8.self), #"["00 Inbox",{"copy":true,"folder":"80 Backup"}]"#)
+    sorted.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    eq(String(decoding: try sorted.encode(cfg.favorites), as: UTF8.self), #"["/Base/00 Inbox",{"copy":true,"folder":"/Base/80 Backup"}]"#)
 
     func invalid(_ mutate: (inout SorterConfig) -> Void) -> SorterConfigError? {
         var c = SorterConfig(); mutate(&c)
         do { try c.validate(); return nil } catch { return error as? SorterConfigError }
     }
-    eq(invalid { $0.favorites = ["/abs"] }, .notRelative("/abs"))
+    eq(invalid { $0.favorites = ["relative"] }, .notAbsolute("relative"))
+    eq(invalid { $0.targets = ["Files"] }, .notAbsolute("Files"))
     check(invalid { $0.renameRules = ["A": "{nope}"] } != nil, "bad pattern rejected")
-    eq(invalid { $0.renameRules = ["/A": "{name}{ext}"] }, .notRelative("/A"))
+    eq(invalid { $0.renameRules = ["A": "{name}{ext}"] }, .notAbsolute("A"))
+    check(invalid { $0.renameRules = ["~/A": "{name}{ext}"]; $0.targets = ["~", "/x"] } == nil, "~ and absolute paths are fine")
     eq(invalid { $0.suggest.minMargin = -1 }, .negative("suggest.minMargin"))
     eq(invalid { $0.dropApps = ["relative/x.app"] }, .notAnAppPath("relative/x.app"))
     eq(invalid { $0.dropApps = ["/abs/x"] }, .notAnAppPath("/abs/x"))
