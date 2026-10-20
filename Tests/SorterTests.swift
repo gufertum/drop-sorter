@@ -19,7 +19,7 @@ func shelfVisibilityTests() {
 
 func chooserModelTests() {
     let folders = ["00 Inbox", "30 Areas/Finance", "30 Areas/Finance/Invoices", "30 Areas/Finance/Taxes",
-                   "40 Resources/Recipes", "90 Archive"].map(FolderEntry.init)
+                   "40 Resources/Recipes", "90 Archive"].map { FolderEntry(path: $0) }
     let clear = Matcher.suggest([DropItem(name: "invoices-hetzner.pdf", isDirectory: false)], folders: folders)
     eq(clear.preselected, "30 Areas/Finance/Invoices")
 

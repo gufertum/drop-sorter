@@ -26,7 +26,7 @@ private let tree = [
     "30 Areas/Finance/Steuern", "30 Areas/Finance/Steuern/2025", "30 Areas/Finance/Steuern/2026",
     "30 Areas/Health/Lab Results", "30 Areas/House/Manuals", "40 Resources/Recipes", "40 Resources/Manuals",
     "50 Attachments", "50 Attachments/Images", "90 Archive",
-].map(FolderEntry.init)
+].map { FolderEntry(path: $0) }
 
 private func file(_ name: String) -> DropItem { DropItem(name: name, isDirectory: false) }
 

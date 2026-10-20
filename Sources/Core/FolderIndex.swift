@@ -12,7 +12,10 @@ enum FolderIndexError: LocalizedError, Equatable {
 
 /// Lists every possible target below the base folder.
 enum FolderIndex {
-    /// All subfolders of `base` as relative paths, sorted. Skips hidden folders (".git", ".Trash", …),
+    /// Files listed per folder for the "similar names" signal; more say nothing new and cost time.
+    static let maxFilesPerFolder = 300
+
+    /// All subfolders of `base` as relative paths, sorted, each with the names of its files. Skips hidden folders (".git", ".Trash", …),
     /// packages such as .app bundles, symbolic links, and `exclude` entries (relative paths, with their subfolders).
     /// Unreadable subfolders are logged and skipped.
     static func scan(base: URL, exclude: [String] = [], fileManager fm: FileManager = .default) throws -> [FolderEntry] {
@@ -33,18 +36,27 @@ enum FolderIndex {
         }
         // Relative path by components: resolvingSymlinksInPath and the enumerator disagree on /private/var vs /var.
         let rootDepth = root.pathComponents.count
-        var entries: [FolderEntry] = []
+        var folders: [String] = []
+        var files: [String: [String]] = [:]
         for case let url as URL in walker {
-            guard let v = try? url.resourceValues(forKeys: Set(keys)),
-                  v.isDirectory == true, v.isPackage != true, v.isSymbolicLink != true else { continue }
-            let rel = url.standardizedFileURL.pathComponents.dropFirst(rootDepth).joined(separator: "/")
-            if excluded.contains(where: { rel == $0 || rel.hasPrefix($0 + "/") }) {
-                walker.skipDescendants()
-                continue
+            guard let v = try? url.resourceValues(forKeys: Set(keys)), v.isSymbolicLink != true else { continue }
+            let components = url.standardizedFileURL.pathComponents.dropFirst(rootDepth)
+            if v.isDirectory == true && v.isPackage != true {
+                let rel = components.joined(separator: "/")
+                if excluded.contains(where: { rel == $0 || rel.hasPrefix($0 + "/") }) {
+                    walker.skipDescendants()
+                    continue
+                }
+                folders.append(rel)
+            } else if components.count > 1 {
+                // A file (or a package such as an .app) inside a folder below the base.
+                let parent = components.dropLast().joined(separator: "/")
+                if files[parent, default: []].count < maxFilesPerFolder {
+                    files[parent, default: []].append(url.lastPathComponent)
+                }
             }
-            entries.append(FolderEntry(path: rel))
         }
-        return entries.sorted { $0.path < $1.path }
+        return folders.sorted().map { FolderEntry(path: $0, files: files[$0] ?? []) }
     }
 
     /// `url` as a path relative to `base`, or nil when it is not inside it (or is `base` itself).
