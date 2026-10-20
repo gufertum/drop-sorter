@@ -13,14 +13,16 @@ Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
   Matcher, FolderIndex, History, JSONStore, SorterConfig, SorterConfigStore, YAML, DropMoverConfig,
   ShelfVisibility, ChooserModel, Sorter.
 - `Sources/DropMover/` Drop Mover app (AppKit). `Resources/DropMover/Info.plist`.
-- `Sources/DropSorter/` Drop Sorter app (phase 2, not there yet).
+- `Sources/DropSorter/` Drop Sorter agent app: FrontmostWatcher, ShelfPanel, ChooserPanel, SortToast, main.
+  `Resources/DropSorter/Info.plist` (`LSUIElement`). `DROPSORTER_HOME=<dir>` replaces the Application Support
+  folder, for manual tests with a sample vault: `open -n --env DROPSORTER_HOME=<dir> "build/Drop Sorter.app"`.
 - `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
 - `Tools/` make-icon (iconset), suggest (matcher CLI).
 
 ## Build and test
 
 ```bash
-./build.sh      # tests, build/suggest, build/Drop Mover.app
+./build.sh      # tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
 scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured Drop Mover copy (until phase 4)
 ```
 

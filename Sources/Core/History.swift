@@ -32,6 +32,15 @@ struct History: Codable, Equatable {
         }
     }
 
+    /// Takes back one `record` call, e.g. after Undo. Counts never go below zero.
+    mutating func forget(tokens: [String], folder: String) {
+        for t in tokens {
+            guard let c = counts[t]?[folder] else { continue }
+            counts[t]?[folder] = c > 1 ? c - 1 : nil
+            if counts[t]?.isEmpty == true { counts[t] = nil }
+        }
+    }
+
     /// Forgets folders that no longer exist (renamed or deleted in the vault).
     mutating func prune(keeping folders: Set<String>) {
         for (t, map) in counts {

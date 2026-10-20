@@ -17,7 +17,7 @@ Concept and GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 | Phase | Content | State |
 |---|---|---|
 | 1 | Repository layout, tested core (matcher, folder index, history, mover, config) | done |
-| 2 | Shelf, chooser, toast with Undo | open |
+| 2 | Shelf, chooser, toast with Undo | in review |
 | 3 | Settings, favorites, optional menu-bar icon, open at login | open |
 | 4 | Generate, update and adopt Drop Mover apps | open |
 
@@ -28,7 +28,8 @@ Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
 Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, Apple Silicon.
 
 ```bash
-./build.sh      # unit tests, build/suggest, build/Drop Mover.app
+./build.sh      # unit tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
+open "build/Drop Sorter.app"
 ```
 
 ## Try the suggestions

@@ -10,6 +10,9 @@ let suites: [(String, () throws -> Void)] = [
     ("SorterConfig", sorterConfigTests),
     ("YAML", yamlTests),
     ("SorterConfigStore", sorterConfigStoreTests),
+    ("ShelfVisibility", shelfVisibilityTests),
+    ("ChooserModel", chooserModelTests),
+    ("Sorter", sorterTests),
 ]
 for (name, run) in suites {
     do { try run() } catch { failures += 1; print("FAIL \(name): unexpected error \(error)") }
