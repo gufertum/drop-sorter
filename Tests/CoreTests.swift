@@ -36,6 +36,18 @@ func relativePathTests() throws {
     eq(FolderIndex.relativePath(of: viaLink.appendingPathComponent("30 Areas"), in: base), "30 Areas")
 }
 
+func logTests() {
+    let (savedPrefix, savedSink) = (Log.prefix, Log.sink)
+    defer { (Log.prefix, Log.sink) = (savedPrefix, savedSink) }
+    var lines: [String] = []
+    Log.sink = { lines.append($0) }
+    Mover.logPrefix = "x"
+    eq(Log.prefix, "x")
+    Log.info("hello")
+    _ = Mover.move([], to: URL(fileURLWithPath: "/nonexistent"), pattern: nil)
+    eq(lines, ["x: hello", "x: moved 0 item(s) to '/nonexistent', 0 failure(s)"])
+}
+
 func historyTests() throws {
     var h = History()
     h.record(tokens: ["rechnung", "swisscom"], folder: "Invoices")

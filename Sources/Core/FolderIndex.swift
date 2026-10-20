@@ -26,7 +26,7 @@ enum FolderIndex {
         guard let walker = fm.enumerator(at: root, includingPropertiesForKeys: keys,
                                          options: [.skipsHiddenFiles, .skipsPackageDescendants],
                                          errorHandler: { url, error in
-                                             NSLog("%@: cannot read '%@': %@", Mover.logPrefix, url.path, error.localizedDescription)
+                                             Log.info(String(format: "cannot read '%@': %@", url.path, error.localizedDescription))
                                              return true
                                          }) else {
             throw FolderIndexError.baseNotFound(base.path)

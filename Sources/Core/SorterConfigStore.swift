@@ -30,7 +30,7 @@ struct SorterConfigStore {
     func load() throws -> SorterConfig {
         guard let url = activeURL else { return SorterConfig() }
         if url == yamlURL && FileManager.default.fileExists(atPath: jsonURL.path) {
-            NSLog("%@: both config.yaml and config.json exist; using config.yaml, config.json is ignored", Mover.logPrefix)
+            Log.info("both config.yaml and config.json exist; using config.yaml, config.json is ignored")
         }
         return try Self.read(url)
     }
@@ -78,7 +78,7 @@ struct SorterConfigStore {
         let fm = FileManager.default
         if fm.fileExists(atPath: backupURL.path) { try fm.removeItem(at: backupURL) }
         try fm.copyItem(at: url, to: backupURL)
-        NSLog("%@: config.yaml had comments; saved a copy as %@", Mover.logPrefix, backupURL.path)
+        Log.info(String(format: "config.yaml had comments; saved a copy as %@", backupURL.path))
     }
 
     /// Modification date of the file in use, to notice edits made outside the app.
