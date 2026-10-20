@@ -6,12 +6,14 @@ enum SorterConfigError: LocalizedError, Equatable {
     case negative(String)
     case notAnAppPath(String)
     case invalidPort(Int)
+    case alsoCopyToSelf(String)
 
     var errorDescription: String? {
         switch self {
         case .notAbsolute(let p): return "'\(p)' must be a full folder path (starting with / or ~/)."
         case .invalidPattern(let p, let why): return "Rename pattern '\(p)': \(why)"
         case .negative(let key): return "\(key) must not be negative."
+        case .alsoCopyToSelf(let f): return "Favorite '\(f)': alsoCopyTo must be another folder."
         case .invalidPort(let p): return "api.port \(p) must be between 1024 and 65535."
         case .notAnAppPath(let p): return "dropApps: '\(p)' must be an absolute path (or start with ~/) ending in .app."
         }
@@ -127,7 +129,10 @@ struct SorterConfig: Codable, Equatable {
 
     /// Checks everything that can be checked without touching the file system. Call at startup and before saving.
     func validate() throws {
-        let folders = targets.map(\.path) + favoritePaths + exclude + Array(aliases.keys) + Array(extensionRules.values)
+        if let f = favorites.first(where: { $0.alsoCopyTo.map(Self.folderID) == Self.folderID($0.folder) }) {
+            throw SorterConfigError.alsoCopyToSelf(f.folder)
+        }
+        let folders = targets.map(\.path) + favoritePaths + favorites.compactMap(\.alsoCopyTo) + exclude + Array(aliases.keys) + Array(extensionRules.values)
             + Array(renameRules.keys)
         if let bad = folders.first(where: { !($0.hasPrefix("/") || $0.hasPrefix("~/") || $0 == "~") }) {
             throw SorterConfigError.notAbsolute(bad)
@@ -219,17 +224,20 @@ struct Target: Codable, Equatable, ExpressibleByStringLiteral {
 struct Favorite: Codable, Equatable, ExpressibleByStringLiteral {
     var folder: String
     var copy = false
+    /// A plain copy of every dropped item goes here as well (no rename rule, no further copy).
+    var alsoCopyTo: String?
 
-    init(folder: String, copy: Bool = false) {
+    init(folder: String, copy: Bool = false, alsoCopyTo: String? = nil) {
         self.folder = folder
         self.copy = copy
+        self.alsoCopyTo = alsoCopyTo
     }
 
     init(stringLiteral value: String) { self.init(folder: value) }
 
     var mode: TransferMode { copy ? .copy : .move }
 
-    private enum CodingKeys: String, CodingKey { case folder, copy }
+    private enum CodingKeys: String, CodingKey { case folder, copy, alsoCopyTo }
 
     init(from decoder: Decoder) throws {
         let textError: Error
@@ -241,14 +249,16 @@ struct Favorite: Codable, Equatable, ExpressibleByStringLiteral {
         // which says "expected text" (the common mistake is an unquoted 2026).
         guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { throw textError }
         self.init(folder: try c.decode(String.self, forKey: .folder),
-                  copy: try c.decodeIfPresent(Bool.self, forKey: .copy) ?? false)
+                  copy: try c.decodeIfPresent(Bool.self, forKey: .copy) ?? false,
+                  alsoCopyTo: try c.decodeIfPresent(String.self, forKey: .alsoCopyTo))
     }
 
     func encode(to encoder: Encoder) throws {
-        if copy {
+        if copy || alsoCopyTo != nil {
             var c = encoder.container(keyedBy: CodingKeys.self)
             try c.encode(folder, forKey: .folder)
-            try c.encode(copy, forKey: .copy)
+            if copy { try c.encode(copy, forKey: .copy) }
+            try c.encodeIfPresent(alsoCopyTo, forKey: .alsoCopyTo)
         } else {
             var c = encoder.singleValueContainer()
             try c.encode(folder)

@@ -50,7 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configDate = configStore.modificationDate
         applyConfig()
         shelf.onDrop = { [weak self] urls, mode in self?.beginSort(urls, mode: mode) }
-        shelf.onDropFavorite = { [weak self] fav, urls, mode in self?.sortIntoFavorite(urls, fav.folder, mode: mode) }
+        shelf.onDropFavorite = { [weak self] fav, urls, mode in
+            self?.sortIntoFavorite(urls, fav.folder, mode: mode, alsoCopyTo: fav.alsoCopyTo)
+        }
         shelf.onSettings = { [weak self] in self?.showSettings() }
         shelf.onDropTrash = { [weak self] urls in self?.trash(urls) }
         shelf.onDragOver = { [weak self] over in
@@ -248,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Drop on a favorite spot: moves (or copies) at once, the toast offers Undo.
-    private func sortIntoFavorite(_ urls: [URL], _ folder: String, mode: TransferMode) {
+    private func sortIntoFavorite(_ urls: [URL], _ folder: String, mode: TransferMode, alsoCopyTo: String? = nil) {
         guard chooser == nil, reloadConfigIfChanged() else { return }
         let id = SorterConfig.folderID(folder)
         var isDir: ObjCBool = false
@@ -258,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // A favorite is a target of its own, also outside the target folders.
-        perform(urls, into: id, mode: mode, anyFolder: true)
+        perform(urls, into: id, mode: mode, alsoCopyTo: alsoCopyTo, anyFolder: true)
     }
 
     private func finishSort(_ urls: [URL], into folder: String?, mode: TransferMode) {
@@ -273,9 +275,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Moves or copies through the shared engine, which also records history and the undo journal.
-    private func perform(_ urls: [URL], into folder: String, mode: TransferMode, anyFolder: Bool = false) {
+    private func perform(_ urls: [URL], into folder: String, mode: TransferMode, alsoCopyTo: String? = nil, anyFolder: Bool = false) {
         do {
-            showResult(try service.perform(urls, into: folder, mode: mode, anyFolder: anyFolder, source: "app"))
+            showResult(try service.perform(urls, into: folder, mode: mode, alsoCopyTo: alsoCopyTo, anyFolder: anyFolder, source: "app"))
         } catch {
             showError("\(mode == .copy ? "Copy" : "Move") failed", [error.localizedDescription], openConfig: false)
         }
@@ -325,7 +327,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
         if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
-        let failed = !r.failures.isEmpty
+        lines += extraLines(r)
+        let failed = !r.failures.isEmpty || !r.extraFailures.isEmpty
         let title = r.failures.isEmpty
             ? (o.display == SortService.trashName ? "Moved \(plural(r.moved.count)) to the Trash" : "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)")
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
@@ -335,6 +338,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             actions.append(.init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(r.moved) })
         }
         toast.show(title: title, lines: lines, isError: failed, actions: actions)
+    }
+
+    /// What happened in the "also copy to" folder, for the toasts.
+    private func extraLines(_ r: MoveResult) -> [String] {
+        guard let first = r.extraCopies.first?.destination ?? r.extraSkipped.first?.identicalTo else {
+            return r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
+        }
+        let folder = first.deletingLastPathComponent().lastPathComponent
+        var lines: [String] = []
+        if !r.extraCopies.isEmpty { lines.append("+ \(plural(r.extraCopies.count)) also copied to \(folder)") }
+        if !r.extraSkipped.isEmpty { lines.append("= \(plural(r.extraSkipped.count)) already in \(folder), not copied again") }
+        return lines + r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
     }
 
     /// Some dropped files already existed in the target with the same content (by hash). Nothing was

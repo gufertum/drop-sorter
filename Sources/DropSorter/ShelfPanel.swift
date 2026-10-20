@@ -142,6 +142,7 @@ final class ShelfPanel: NSPanel {
                              color: Self.palette[index % Self.palette.count])
             f.alwaysCopy = fav.copy
             f.toolTip = (missing.contains(path) ? "\(path) (folder not found)" : path) + (fav.copy ? " · copies" : "")
+                + (fav.alsoCopyTo.map { " · also copies to \($0)" } ?? "")
             f.missing = missing.contains(path)
             f.enabled = spot.enabled && !f.missing
             f.onDrop = { [weak self] urls, copy in self?.onDropFavorite?(fav, urls, copy || fav.copy ? .copy : .move) }

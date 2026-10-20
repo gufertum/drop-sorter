@@ -81,6 +81,7 @@ final class RESTRouter {
         let auto: Bool?
         let mode: TransferMode?
         let identical: IdenticalPolicy?
+        let alsoCopyTo: String?
         let dryRun: Bool?
     }
     private struct UndoBody: Decodable { let id: String? }
@@ -114,7 +115,7 @@ final class RESTRouter {
                 let auto = b.auto ?? false
                 guard (b.folder != nil) != auto else { throw ServiceError.invalidInput("Give either 'folder' or \"auto\": true.") }
                 let report = try service.sort(b.paths, into: b.folder, mode: b.mode ?? .move, identical: b.identical ?? .keep,
-                                              dryRun: b.dryRun ?? false, source: "api")
+                                              alsoCopyTo: b.alsoCopyTo, dryRun: b.dryRun ?? false, source: "api")
                 if !report.dryRun && !report.items.isEmpty { onChange?("sort") }
                 return .json(200, report)
             case ("POST", "/v1/undo"):

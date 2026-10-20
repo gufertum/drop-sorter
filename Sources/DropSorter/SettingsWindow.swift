@@ -112,7 +112,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             button("Date Prefix", #selector(setRuleDefault)), button("Keep Names", #selector(setRuleKeep)),
         ])
 
-        Self.addColumns(favoritesTable, [("color", "", 26.0, false), ("path", "Folder", 300.0, true), ("copy", "Copy", 60.0, false)])
+        Self.addColumns(favoritesTable, [("color", "", 26.0, false), ("path", "Folder", 260.0, true), ("also", "Also copy to", 180.0, true), ("copy", "Copy", 60.0, false)])
         favoritesTable.dataSource = self
         favoritesTable.delegate = self
         favoritesTable.usesAlternatingRowBackgroundColors = true
@@ -203,7 +203,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
              small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder.")],
         ]
         let shelfPane: [[NSView]] = [
-            [heading("Favorites"), favScroll, favoriteButtons,
+            [heading("Favorites"), favScroll,
+             NSStackView(views: [favoriteButtons, button("Also Copy To…", #selector(setAlsoCopyTo)), button("No Extra Copy", #selector(clearAlsoCopyTo))]),
              small("Each favorite gets its own coloured spot on the shelf. Dropping there moves at once (or copies, with Copy on), with Undo in the toast.")],
             [heading("Shelf"), desktopCheck, delayRow, trashCheck, menuBarCheck],
         ]
@@ -522,6 +523,27 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         }
     }
 
+    /// "Also copy to" for the selected favorite: a plain copy of every item dropped there goes into this
+    /// folder as well. Any folder except the favorite itself.
+    @objc private func setAlsoCopyTo() {
+        let row = favoritesTable.selectedRow
+        guard config.favorites.indices.contains(row) else { errorLabel.stringValue = "Select a favorite first."; return }
+        guard let folder = chooseFolder(prompt: "Also Copy Here", message: "Every item dropped on this favorite is also copied into this folder (original name, nothing renamed).") else { return }
+        guard SorterConfig.folderID(folder) != SorterConfig.folderID(config.favorites[row].folder) else {
+            errorLabel.stringValue = "Choose another folder than the favorite itself."
+            return
+        }
+        commit { $0.favorites[row].alsoCopyTo = folder }
+        favoritesTable.selectRowIndexes([row], byExtendingSelection: false)
+    }
+
+    @objc private func clearAlsoCopyTo() {
+        let row = favoritesTable.selectedRow
+        guard config.favorites.indices.contains(row) else { errorLabel.stringValue = "Select a favorite first."; return }
+        commit { $0.favorites[row].alsoCopyTo = nil }
+        favoritesTable.selectRowIndexes([row], byExtendingSelection: false)
+    }
+
     @objc private func favoriteCopyToggled(_ sender: NSButton) {
         guard config.favorites.indices.contains(sender.tag) else { return }
         let row = sender.tag
@@ -651,6 +673,14 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             let dot = NSImageView(image: NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)!)
             dot.contentTintColor = ShelfPanel.palette[row % ShelfPanel.palette.count]
             return dot
+        }
+        if tableColumn?.identifier.rawValue == "also" {
+            guard let also = fav.alsoCopyTo else {
+                let none = NSTextField(labelWithString: "—")
+                none.textColor = .tertiaryLabelColor
+                return none
+            }
+            return pathLabel(also, short: true)
         }
         if tableColumn?.identifier.rawValue == "copy" {
             let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(favoriteCopyToggled(_:)))

@@ -149,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private let targetLabel = NSTextField(labelWithString: "")
     private let patternField = NSTextField(string: "")
     private let previewLabel = NSTextField(labelWithString: "")
+    private let alsoLabel = NSTextField(labelWithString: "")
     private let copyCheck = NSButton(checkboxWithTitle: "Copy instead of move (the originals stay where they are)", target: nil, action: nil)
 
     /// The bundle's file name, so a renamed copy shows its own name.
@@ -212,7 +213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             alert("Target folder not found", target.path)
             return
         }
-        let result = Mover.move(urls, to: target, pattern: config.pattern, mode: config.mode)
+        let extra = config.alsoCopyTo.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath, isDirectory: true) }
+        let result = Mover.move(urls, to: target, pattern: config.pattern, mode: config.mode, alsoCopyTo: extra)
         showToast(result, target: target)
     }
 
@@ -221,6 +223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         var lines = r.moved.prefix(maxLines).map { "→ " + $0.lastPathComponent }
         if r.moved.count > maxLines { lines.append("… and \(r.moved.count - maxLines) more") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
+        if let first = r.extraCopies.first { lines.append("+ \(r.extraCopies.count) also copied to \(first.destination.deletingLastPathComponent().lastPathComponent)") }
+        if !r.extraSkipped.isEmpty { lines.append("= \(r.extraSkipped.count) already there (identical), not copied again") }
+        lines += r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
         let title = r.failures.isEmpty
             ? "\(r.mode.pastTense) \(r.moved.count) item\(r.moved.count == 1 ? "" : "s") to \(target.lastPathComponent)"
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed"
@@ -260,6 +265,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         let chooseButton = NSButton(title: "Choose…", target: self, action: #selector(chooseTarget))
         let openButton = NSButton(title: "Show in Finder", target: self, action: #selector(openTarget))
         let targetRow = NSStackView(views: [targetLabel, chooseButton, openButton])
+        alsoLabel.lineBreakMode = .byTruncatingMiddle
+        alsoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let alsoRow = NSStackView(views: [alsoLabel, NSButton(title: "Choose…", target: self, action: #selector(chooseAlsoCopyTo)),
+                                          NSButton(title: "None", target: self, action: #selector(clearAlsoCopyTo))])
 
         patternField.delegate = self
         patternField.placeholderString = Renamer.defaultPattern
@@ -287,6 +296,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             heading("Rename pattern"), patternRow, previewLabel,
             small("Tokens: " + Renamer.tokenHelp),
             copyCheck,
+            heading("Also copy to"), alsoRow,
+            small("Optional: a plain copy of every dropped item goes into this folder as well (original name, nothing renamed)."),
             drop,
             small("Settings belong to this copy only (\(Bundle.main.bundleURL.lastPathComponent)).")
         ])
@@ -311,6 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             stack.widthAnchor.constraint(equalToConstant: 560),
             targetRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             patternRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            alsoRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             previewLabel.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             drop.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             drop.heightAnchor.constraint(equalToConstant: 80),
@@ -336,6 +348,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         targetLabel.textColor = config.target == nil ? .systemRed : .labelColor
         patternField.stringValue = config.pattern
         copyCheck.state = config.mode == .copy ? .on : .off
+        alsoLabel.stringValue = config.alsoCopyTo ?? "— none —"
+        alsoLabel.textColor = config.alsoCopyTo == nil ? .secondaryLabelColor : .labelColor
         updatePreview()
     }
 
@@ -362,6 +376,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         else { return }
         var updated = config
         updated.pattern = pattern
+        save(updated)
+    }
+
+    @objc private func chooseAlsoCopyTo() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Also Copy Here"
+        panel.message = "Every dropped item is also copied into this folder."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard url.standardizedFileURL.path != targetURL?.standardizedFileURL.path else {
+            alert("Choose another folder", "The extra copy cannot go into the target folder itself.")
+            return
+        }
+        var updated = config
+        updated.alsoCopyTo = url.path
+        save(updated)
+    }
+
+    @objc private func clearAlsoCopyTo() {
+        var updated = config
+        updated.alsoCopyTo = nil
         save(updated)
     }
 
