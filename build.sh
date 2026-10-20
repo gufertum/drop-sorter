@@ -53,14 +53,22 @@ iconutil -c icns "$BUILD/obj/SorterIcon.iconset" -o "$SORTER/Contents/Resources/
 cp Resources/DropSorter/Info.plist "$SORTER/Contents/Info.plist"
 # Template for generated Drop Mover apps. No .app extension, so Launch Services does not register it.
 cp -R "$APP" "$SORTER/Contents/Resources/DropMoverTemplate"
-# The command line tool ships inside the app; Settings links it into ~/.local/bin.
-cp "$BUILD/dropsorter" "$SORTER/Contents/MacOS/dropsorter"
+# The command line tool ships inside the app; Settings links it into ~/.local/bin. Not in
+# Contents/MacOS: APFS is case-insensitive, so "dropsorter" there would replace "DropSorter".
+mkdir -p "$SORTER/Contents/Helpers"
+cp "$BUILD/dropsorter" "$SORTER/Contents/Helpers/dropsorter"
+if cmp -s "$SORTER/Contents/MacOS/DropSorter" "$SORTER/Contents/Helpers/dropsorter"; then
+  echo "error: the app executable was replaced by the command line tool" >&2
+  exit 1
+fi
 printf 'APPL????' > "$SORTER/Contents/PkgInfo"
 # Drop Sorter keeps its state in Application Support, so its bundle can be sealed.
 SIGN_ID="${DROPSORTER_SIGN_ID:-}"
 if [[ -z "$SIGN_ID" ]] && security find-certificate -c "Drop Sorter Local" >/dev/null 2>&1; then
   SIGN_ID="Drop Sorter Local"
 fi
+# Nested code first, then the bundle.
+codesign --force --sign "${SIGN_ID:--}" "$SORTER/Contents/Helpers/dropsorter"
 codesign --force --sign "${SIGN_ID:--}" "$SORTER"
 if [[ -n "$SIGN_ID" ]]; then
   echo "    signed with \"$SIGN_ID\""

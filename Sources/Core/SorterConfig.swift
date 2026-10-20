@@ -5,12 +5,14 @@ enum SorterConfigError: LocalizedError, Equatable {
     case invalidPattern(String, String)
     case negative(String)
     case notAnAppPath(String)
+    case invalidPort(Int)
 
     var errorDescription: String? {
         switch self {
         case .notRelative(let p): return "'\(p)' must be a folder path relative to the base folder, without a leading '/'."
         case .invalidPattern(let p, let why): return "Rename pattern '\(p)': \(why)"
         case .negative(let key): return "\(key) must not be negative."
+        case .invalidPort(let p): return "api.port \(p) must be between 1024 and 65535."
         case .notAnAppPath(let p): return "dropApps: '\(p)' must be an absolute path (or start with ~/) ending in .app."
         }
     }
@@ -22,6 +24,12 @@ struct SorterConfig: Codable, Equatable {
     struct Suggest: Codable, Equatable {
         var minScore = 3.0
         var minMargin = 1.0
+    }
+
+    /// REST API inside the app: off by default, 127.0.0.1 only, bearer token.
+    struct API: Codable, Equatable {
+        var enabled = false
+        var port = 47800
     }
 
     struct Shelf: Codable, Equatable {
@@ -43,6 +51,7 @@ struct SorterConfig: Codable, Equatable {
     var suggest = Suggest()
     var shelf = Shelf()
     var menuBarIcon = false
+    var api = API()
     /// Drop Mover apps managed in Settings, absolute paths (`~` allowed).
     var dropApps: [String] = []
 
@@ -65,6 +74,7 @@ struct SorterConfig: Codable, Equatable {
         shelf = try c.decodeIfPresent(Shelf.self, forKey: .shelf) ?? Shelf()
         menuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .menuBarIcon) ?? false
         dropApps = try c.decodeIfPresent([String].self, forKey: .dropApps) ?? []
+        api = try c.decodeIfPresent(API.self, forKey: .api) ?? API()
     }
 
     var dropAppURLs: [URL] {
@@ -91,6 +101,7 @@ struct SorterConfig: Codable, Equatable {
         if suggest.minScore < 0 { throw SorterConfigError.negative("suggest.minScore") }
         if suggest.minMargin < 0 { throw SorterConfigError.negative("suggest.minMargin") }
         if shelf.hideDelayMs < 0 { throw SorterConfigError.negative("shelf.hideDelayMs") }
+        if !(1024...65535).contains(api.port) { throw SorterConfigError.invalidPort(api.port) }
     }
 
     /// The rule that applies to `folder`: its own rule, else the closest parent rule that covers subfolders.
@@ -214,6 +225,14 @@ extension SorterConfig.Suggest {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         minScore = try c.decodeIfPresent(Double.self, forKey: .minScore) ?? 3
         minMargin = try c.decodeIfPresent(Double.self, forKey: .minMargin) ?? 1
+    }
+}
+
+extension SorterConfig.API {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 47800
     }
 }
 

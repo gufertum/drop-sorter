@@ -73,7 +73,7 @@ The first `codesign` run may ask for keychain access: choose "Always Allow".
 app running. Settings › General › **Install Command Line Tool** links it into `~/.local/bin`; or:
 
 ```bash
-ln -sf "/Applications/Drop Sorter.app/Contents/MacOS/dropsorter" ~/.local/bin/dropsorter
+ln -sf "/Applications/Drop Sorter.app/Contents/Helpers/dropsorter" ~/.local/bin/dropsorter
 ```
 
 ```bash
@@ -111,8 +111,39 @@ claude mcp add drop-sorter -- ~/.local/bin/dropsorter mcp
 Other clients (JSON config):
 
 ```json
-{"mcpServers": {"drop-sorter": {"command": "/Applications/Drop Sorter.app/Contents/MacOS/dropsorter", "args": ["mcp"]}}}
+{"mcpServers": {"drop-sorter": {"command": "/Applications/Drop Sorter.app/Contents/Helpers/dropsorter", "args": ["mcp"]}}}
 ```
+
+## REST API
+
+Off by default. Settings › General › API: enable it, pick the port (default 47800), **Copy Token**.
+It listens on `127.0.0.1` only, needs `Authorization: Bearer <token>` on every route except health,
+accepts only `127.0.0.1` / `localhost` as Host (no DNS rebinding from web pages) and cannot change
+settings. The token lives in `api-token` (mode 0600) in the support folder; **New Token** replaces it.
+Without the app: `dropsorter serve [--port N]`. Moves through the API show the usual toast with Undo.
+
+```bash
+TOKEN=$(cat ~/Library/Application\ Support/li.sudo.dropsorter/api-token)
+curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:47800/v1/folders?q=inv"
+curl -s -H "Authorization: Bearer $TOKEN" -d '{"paths":["/Users/me/Downloads/invoice.pdf"],"auto":true}' http://127.0.0.1:47800/v1/sort
+curl -s -H "Authorization: Bearer $TOKEN" -X POST http://127.0.0.1:47800/v1/undo
+```
+
+| Route | Body | Result |
+|---|---|---|
+| `GET /v1/health` | | `{status, version}`, no token |
+| `GET /v1/folders?q=` | | `{base, folders}` |
+| `POST /v1/suggest` | `{names, limit?}` | `{preselected, candidates}` |
+| `POST /v1/sort` | `{paths, folder? \| auto?, mode?, dryRun?}` | `{id, mode, folder, dryRun, items, failed}` |
+| `POST /v1/undo` | `{id?}` | `{id, mode, folder, items, failed}` |
+| `GET /v1/last` | | `{operation}` (null when there is nothing to undo) |
+| `GET /v1/config` | | the configuration |
+| `GET /v1/drop-apps` | | `{dropApps}` |
+
+Errors: `{"error": {"code", "message"}}` with 400 `invalid_input`, 401 `unauthorized`, 404
+`not_found` / `no_route`, 409 `nothing_to_undo` / `stale_undo`, 413, 421 `bad_host`, 422
+`folder_not_allowed` / `no_clear_suggestion`, 503 `config_error` / `no_base_folder`. Requests for every
+route: [docs/api.http](docs/api.http) (httpyac).
 
 ## How a folder is suggested
 
@@ -169,6 +200,9 @@ shelf:
   showOnDesktop: true
   hideDelayMs: 400
 menuBarIcon: false
+api:                 # REST API, Settings › General › API
+  enabled: false
+  port: 47800
 dropApps:            # managed in Settings › Drop apps
   - ~/Documents/Files/00 Inbox/_move-to-invoices.app
 ```

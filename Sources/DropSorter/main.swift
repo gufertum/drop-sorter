@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingOpen: [URL] = []
     private var finishedLaunching = false
     private var menuBar: MenuBarItem?
+    private var apiServer: HTTPServer?
+    /// "off", "listening on 127.0.0.1:47800", or the failure; shown in Settings.
+    private(set) var apiStatus = "off"
     private let dropAppManager = DropAppManager()
     private var settings: SettingsWindow?
     /// Modification date of the config file last read, to pick up hand edits.
@@ -96,7 +99,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.remove()
             menuBar = nil
         }
+        applyAPI()
         settings?.update(config: config, historyWords: historyWords)
+    }
+
+    /// Starts, restarts (new port) or stops the REST API to match the config.
+    private func applyAPI() {
+        guard config.api.enabled else {
+            apiServer?.stop()
+            apiServer = nil
+            apiStatus = "off"
+            return
+        }
+        if let s = apiServer, Int(s.port) == config.api.port { return }
+        apiServer?.stop()
+        let port = config.api.port
+        let tokens = APIToken(home: supportDirectory)
+        let router = RESTRouter(service: service, port: port) { try tokens.load() }
+        router.onChange = { [weak self] _ in DispatchQueue.main.async { self?.showExternalChange() } }
+        let server = HTTPServer(port: UInt16(port), handler: router.handle)
+        server.onState = { [weak self] state in
+            DispatchQueue.main.async {
+                self?.apiStatus = state == "ready" ? "listening on 127.0.0.1:\(port)" : state
+                self?.settings?.update(config: self?.config ?? SorterConfig(), historyWords: self?.historyWords ?? 0)
+            }
+        }
+        do {
+            _ = try tokens.load()
+            try server.start()
+            apiServer = server
+            apiStatus = "starting…"
+        } catch {
+            apiStatus = "failed: \(error.localizedDescription)"
+            showError("REST API not started", [error.localizedDescription], openConfig: false)
+        }
+    }
+
+    /// A sort or undo through the API: the usual toast, with Undo for the operation it made.
+    private func showExternalChange() {
+        guard let e = try? service.lastOperation() else {
+            toast.show(title: "Undone via the API", lines: [], isError: false, actions: [])
+            return
+        }
+        let id = e.id
+        let moved = e.moves.map(\.destination)
+        toast.show(title: "\(e.mode.pastTense) \(plural(e.moves.count)) to \(e.folder) (via \(e.source))",
+                   lines: moved.prefix(6).map { "→ " + $0.lastPathComponent }, isError: false,
+                   actions: [.init(title: "Undo") { [weak self] in self?.undo(id: id) },
+                             .init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(moved) }])
     }
 
     /// Re-reads the config file when it changed on disk (edited by hand), so no restart is needed.
@@ -305,7 +355,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         if settings == nil {
             let s = SettingsWindow(config: config, configPath: (configStore.activeURL ?? configStore.yamlURL).path,
-                                   historyWords: historyWords, dropApps: dropAppManager)
+                                   historyWords: historyWords, dropApps: dropAppManager,
+                                   apiToken: APIToken(home: supportDirectory), apiStatus: { [weak self] in self?.apiStatus ?? "off" })
             s.onChange = { [weak self] updated in self?.saveFromSettings(updated) }
             s.onForgetHistory = { [weak self] in
                 guard let self else { return 0 }
