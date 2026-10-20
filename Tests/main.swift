@@ -8,6 +8,9 @@ let suites: [(String, () throws -> Void)] = [
     ("History", historyTests),
     ("Mover", moverTests),
     ("SorterConfig", sorterConfigTests),
+    ("ShelfVisibility", shelfVisibilityTests),
+    ("ChooserModel", chooserModelTests),
+    ("Sorter", sorterTests),
 ]
 for (name, run) in suites {
     do { try run() } catch { failures += 1; print("FAIL \(name): unexpected error \(error)") }
