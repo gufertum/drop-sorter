@@ -2,7 +2,7 @@
 # Runs the unit tests, then builds "build/suggest", "build/Drop Mover.app" and "build/Drop Sorter.app".
 # Usage: ./build.sh
 # Drop Sorter is signed with a stable identity when one exists, so macOS privacy grants (e.g. access
-# to a vault in ~/Documents) survive rebuilds: DROPSORTER_SIGN_ID, else "Drop Sorter Local" (created by
+# to a base folder in ~/Documents) survive rebuilds: DROPSORTER_SIGN_ID, else "Drop Sorter Local" (created by
 # scripts/make-signing-identity.sh), else ad hoc.
 set -euo pipefail
 cd "$(dirname "$0")"

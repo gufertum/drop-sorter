@@ -20,7 +20,7 @@ func tokenizerTests() throws {
     check(!Tokenizer.prefixMatch("2025", "2025"), "years only match exactly")
 }
 
-private let vault = [
+private let tree = [
     "00 Inbox", "10 Journal", "10 Journal/2026", "20 Projects", "20 Projects/Drop Sorter", "20 Projects/Vesta",
     "30 Areas", "30 Areas/Finance", "30 Areas/Finance/Invoices", "30 Areas/Finance/Insurance",
     "30 Areas/Finance/Steuern", "30 Areas/Finance/Steuern/2025", "30 Areas/Finance/Steuern/2026",
@@ -38,44 +38,44 @@ func matcherTests() throws {
 
     // Learned word plus a prefix match across two items.
     let invoices = Matcher.suggest([file("Rechnung_Swisscom_2026-09.pdf"), file("invoice-hetzner-oct.pdf")],
-                                   folders: vault, rules: rules, history: history)
+                                   folders: tree, rules: rules, history: history)
     eq(invoices.preselected, "30 Areas/Finance/Invoices")
     eq(invoices.ranked.first?.score, 3.0)
     check(invoices.ranked.first!.reasons.contains("learned “rechnung” 7×"), "\(invoices.ranked.first!.reasons)")
 
     // Without history the year alone is not enough to preselect.
-    let noHistory = Matcher.suggest([file("Rechnung_Swisscom_2026-09.pdf")], folders: vault, rules: rules)
+    let noHistory = Matcher.suggest([file("Rechnung_Swisscom_2026-09.pdf")], folders: tree, rules: rules)
     eq(noHistory.preselected, nil)
 
     // Umlaut folding, year in the leaf, parent prefix.
-    let tax = Matcher.suggest([file("Steuererklärung 2025.pdf")], folders: vault, rules: rules)
+    let tax = Matcher.suggest([file("Steuererklärung 2025.pdf")], folders: tree, rules: rules)
     eq(tax.preselected, "30 Areas/Finance/Steuern/2025")
 
     // Two equally good folders: ranked, but nothing preselected.
-    let manual = Matcher.suggest([file("Bosch-Dishwasher-Manual.pdf")], folders: vault, rules: rules)
+    let manual = Matcher.suggest([file("Bosch-Dishwasher-Manual.pdf")], folders: tree, rules: rules)
     eq(manual.preselected, nil)
     eq(Set(manual.ranked.prefix(2).map(\.path)), ["30 Areas/House/Manuals", "40 Resources/Manuals"])
 
     // Extension rule; an exact project name beats it.
-    eq(Matcher.suggest([file("IMG_4412.HEIC")], folders: vault, rules: rules).preselected, "50 Attachments/Images")
-    eq(Matcher.suggest([file("drop-sorter-sketch.png")], folders: vault, rules: rules).preselected, "20 Projects/Drop Sorter")
+    eq(Matcher.suggest([file("IMG_4412.HEIC")], folders: tree, rules: rules).preselected, "50 Attachments/Images")
+    eq(Matcher.suggest([file("drop-sorter-sketch.png")], folders: tree, rules: rules).preselected, "20 Projects/Drop Sorter")
 
     // Alias.
-    eq(Matcher.suggest([file("Blutbild_Labor_2026-10.pdf")], folders: vault, rules: rules).preselected,
+    eq(Matcher.suggest([file("Blutbild_Labor_2026-10.pdf")], folders: tree, rules: rules).preselected,
        "30 Areas/Health/Lab Results")
 
     // Folders have no extension: "notes.v2" stays one name.
-    let folder = Matcher.suggest([DropItem(name: "recipes.v2", isDirectory: true)], folders: vault, rules: rules)
+    let folder = Matcher.suggest([DropItem(name: "recipes.v2", isDirectory: true)], folders: tree, rules: rules)
     eq(folder.preselected, "40 Resources/Recipes")
 
     // Nothing in the name: no preselection, stable alphabetical order.
-    let none = Matcher.suggest([file("xyz.bin")], folders: vault, rules: rules)
+    let none = Matcher.suggest([file("xyz.bin")], folders: tree, rules: rules)
     eq(none.preselected, nil)
     eq(none.ranked.first?.path, "00 Inbox")
-    eq(Matcher.suggest([], folders: vault).ranked.count, 0)
+    eq(Matcher.suggest([], folders: tree).ranked.count, 0)
 
     // Filter ranking.
-    let all = Matcher.suggest([file("xyz.bin")], folders: vault).ranked
+    let all = Matcher.suggest([file("xyz.bin")], folders: tree).ranked
     eq(Matcher.rank(all, query: "fin inv").first?.path, "30 Areas/Finance/Invoices")
     eq(Matcher.rank(all, query: "arch").first?.path, "90 Archive")
     eq(Matcher.rank(all, query: "STEUERN 25").first?.path, "30 Areas/Finance/Steuern/2025")

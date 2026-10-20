@@ -12,7 +12,7 @@ enum FolderIndexError: LocalizedError, Equatable {
 
 /// Lists every possible target below the base folder.
 enum FolderIndex {
-    /// All subfolders of `base` as relative paths, sorted. Skips hidden folders (".obsidian", ".trash", ".git"),
+    /// All subfolders of `base` as relative paths, sorted. Skips hidden folders (".git", ".Trash", …),
     /// packages such as .app bundles, symbolic links, and `exclude` entries (relative paths, with their subfolders).
     /// Unreadable subfolders are logged and skipped.
     static func scan(base: URL, exclude: [String] = [], fileManager fm: FileManager = .default) throws -> [FolderEntry] {
@@ -48,7 +48,7 @@ enum FolderIndex {
     }
 
     /// `url` as a path relative to `base`, or nil when it is not inside it (or is `base` itself).
-    /// Symbolic links are resolved on both sides (/var vs /private/var, a vault reached through a link).
+    /// Symbolic links are resolved on both sides (/var vs /private/var, a base folder reached through a link).
     static func relativePath(of url: URL, in base: URL) -> String? {
         let b = base.standardizedFileURL.resolvingSymlinksInPath().pathComponents
         let u = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents

@@ -29,7 +29,7 @@ struct SorterConfig: Codable, Equatable {
         var hideDelayMs = 400
     }
 
-    /// Absolute path of the vault; `~` is expanded.
+    /// Absolute path of the base folder; `~` is expanded.
     var base: String?
     /// Folder -> rename rule for items moved there. The most specific applicable rule wins; `{original}`
     /// keeps the name, e.g. for a subfolder of a renamed tree.
