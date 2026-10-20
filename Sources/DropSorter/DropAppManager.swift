@@ -10,8 +10,8 @@ final class DropAppManager {
 
     func inspect(_ url: URL) -> DropAppInfo { DropAppFactory.inspect(url, template: template) }
 
-    func create(at url: URL, target: URL, pattern: String) throws {
-        try DropAppFactory.create(at: url, template: template, config: DropConfig(target: target.path, pattern: pattern))
+    func create(at url: URL, target: URL, pattern: String, mode: TransferMode = .move) throws {
+        try DropAppFactory.create(at: url, template: template, config: DropConfig(target: target.path, pattern: pattern, mode: mode))
         applyIcon(url, label: target.lastPathComponent)
     }
 

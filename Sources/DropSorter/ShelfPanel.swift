@@ -4,9 +4,10 @@ import AppKit
 /// leave Finder the active app, so the shelf does not hide itself.
 final class ShelfPanel: NSPanel {
     static let width: CGFloat = 140
-    var onDrop: (([URL]) -> Void)?
-    /// A drop on a favorite spot: folder path, items. Moves at once, no chooser.
-    var onDropFavorite: ((String, [URL]) -> Void)?
+    /// A drop on the main spot; `.copy` when ⌥ was held.
+    var onDrop: (([URL], TransferMode) -> Void)?
+    /// A drop on a favorite spot: favorite, items, mode (⌥ or the favorite's own setting). No chooser.
+    var onDropFavorite: ((Favorite, [URL], TransferMode) -> Void)?
     var onDragOver: ((Bool) -> Void)?
     var onClose: (() -> Void)?
     var onSettings: (() -> Void)?
@@ -59,7 +60,7 @@ final class ShelfPanel: NSPanel {
         let header = NSStackView(views: [title, pinLabel, spacer, settingsButton, closeButton])
         header.spacing = 4
 
-        spot.onDrop = { [weak self] in self?.onDrop?($0) }
+        spot.onDrop = { [weak self] urls, copy in self?.onDrop?(urls, copy ? .copy : .move) }
         spot.onHover = { [weak self] in self?.onDragOver?($0) }
 
         favoriteStack.orientation = .vertical
@@ -99,14 +100,16 @@ final class ShelfPanel: NSPanel {
     }
 
     /// One spot per favorite. `missing` folders are shown dimmed and refuse drops.
-    func setFavorites(_ paths: [String], missing: Set<String>) {
+    func setFavorites(_ favorites: [Favorite], missing: Set<String>) {
         favoriteSpots.forEach { $0.removeFromSuperview() }
-        favoriteSpots = zip(paths, ShelfLabels.labels(paths)).map { path, label in
-            let f = DropSpot(symbol: "star", title: label, compact: true)
-            f.toolTip = missing.contains(path) ? "\(path) (folder not found)" : path
+        favoriteSpots = zip(favorites, ShelfLabels.labels(favorites.map(\.folder))).map { fav, label in
+            let path = fav.folder
+            let f = DropSpot(symbol: fav.copy ? "plus.square.on.square" : "star", title: label, compact: true)
+            f.alwaysCopy = fav.copy
+            f.toolTip = (missing.contains(path) ? "\(path) (folder not found)" : path) + (fav.copy ? " · copies" : "")
             f.missing = missing.contains(path)
             f.enabled = spot.enabled && !f.missing
-            f.onDrop = { [weak self] in self?.onDropFavorite?(path, $0) }
+            f.onDrop = { [weak self] urls, copy in self?.onDropFavorite?(fav, urls, copy || fav.copy ? .copy : .move) }
             f.onHover = { [weak self] in self?.onDragOver?($0) }
             f.translatesAutoresizingMaskIntoConstraints = false
             favoriteStack.addArrangedSubview(f)
@@ -173,9 +176,12 @@ final class ShelfPanel: NSPanel {
 
 /// A drop spot: the large main spot, or a compact one-line favorite. Accepts file and folder URLs.
 final class DropSpot: NSView {
-    var onDrop: (([URL]) -> Void)?
+    /// Items, and whether to copy (⌥ held while dropping).
+    var onDrop: (([URL], Bool) -> Void)?
     var onHover: ((Bool) -> Void)?
     var enabled = true
+    /// A favorite set to copy: the cursor shows the copy badge without ⌥.
+    var alwaysCopy = false
     var missing = false { didSet { alphaValue = missing ? 0.4 : 1 } }
     private let compact: Bool
     private var highlighted = false { didSet { needsDisplay = true } }
@@ -225,8 +231,16 @@ final class DropSpot: NSView {
         guard enabled else { return [] }
         highlighted = true
         onHover?(true)
-        return .move
+        return operation()
     }
+    /// Re-evaluated while the mouse moves, so pressing ⌥ mid-drag switches the cursor badge.
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        enabled ? operation() : []
+    }
+    private func operation() -> NSDragOperation {
+        alwaysCopy || Self.optionHeld ? .copy : .move
+    }
+    static var optionHeld: Bool { NSEvent.modifierFlags.contains(.option) }
     override func draggingExited(_ sender: NSDraggingInfo?) {
         highlighted = false
         onHover?(false)
@@ -240,8 +254,9 @@ final class DropSpot: NSView {
         let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
                                                          options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         guard enabled, !urls.isEmpty else { return false }
+        let copy = Self.optionHeld
         // Return to Finder first; the chooser opens after the drag session has ended.
-        DispatchQueue.main.async { [weak self] in self?.onDrop?(urls) }
+        DispatchQueue.main.async { [weak self] in self?.onDrop?(urls, copy) }
         return true
     }
 }

@@ -96,9 +96,12 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             button("Date Prefix", #selector(setRuleDefault)), button("Keep Names", #selector(setRuleKeep)),
         ])
 
-        let column = NSTableColumn(identifier: .init("path"))
-        favoritesTable.addTableColumn(column)
-        favoritesTable.headerView = nil
+        for (id, title, width) in [("path", "Folder", 540.0), ("copy", "Copy", 50.0)] {
+            let c = NSTableColumn(identifier: .init(id))
+            c.title = title
+            c.width = width
+            favoritesTable.addTableColumn(c)
+        }
         favoritesTable.dataSource = self
         favoritesTable.delegate = self
         favoritesTable.usesAlternatingRowBackgroundColors = true
@@ -373,8 +376,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         switch favoriteButtons.selectedSegment {
         case 0:
             guard let rel = chooseFolderInBase(prompt: "Add Favorite", message: "The folder gets its own drop spot on the shelf.") else { return }
-            if config.favorites.contains(rel) { return }
-            commit { $0.favorites.append(rel) }
+            if config.favoritePaths.contains(rel) { return }
+            commit { $0.favorites.append(Favorite(folder: rel)) }
             favoritesTable.selectRowIndexes([config.favorites.count - 1], byExtendingSelection: false)
         case 1 where row >= 0:
             commit { $0.favorites.remove(at: row) }
@@ -387,6 +390,12 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         default:
             break
         }
+    }
+
+    @objc private func favoriteCopyToggled(_ sender: NSButton) {
+        guard config.favorites.indices.contains(sender.tag) else { return }
+        let row = sender.tag
+        commit { $0.favorites[row].copy = sender.state == .on }
     }
 
     @objc private func shelfChanged() { commit { $0.shelf.showOnDesktop = desktopCheck.state == .on } }
@@ -441,7 +450,15 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if tableView === dropTable { return dropCell(dropInfos[row], column: tableColumn?.identifier.rawValue ?? "") }
         if tableView === ruleTable { return ruleCell(row, column: tableColumn?.identifier.rawValue ?? "") }
-        let path = config.favorites[row]
+        let fav = config.favorites[row]
+        if tableColumn?.identifier.rawValue == "copy" {
+            let check = NSButton(checkboxWithTitle: "", target: self, action: #selector(favoriteCopyToggled(_:)))
+            check.state = fav.copy ? .on : .off
+            check.tag = row
+            check.toolTip = "On: dropping on this spot copies instead of moving."
+            return check
+        }
+        let path = fav.folder
         let label = NSTextField(labelWithString: path)
         label.lineBreakMode = .byTruncatingMiddle
         if let base = baseURL, !FileManager.default.fileExists(atPath: base.appendingPathComponent(path).path) {
@@ -495,7 +512,9 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         switch column {
         case "name": label.stringValue = info.name
         case "place": label.stringValue = DropAppManager.abbreviate(info.url.deletingLastPathComponent())
-        case "target": label.stringValue = info.config?.target.map { DropAppManager.abbreviate(URL(fileURLWithPath: $0)) } ?? "—"
+        case "target":
+            label.stringValue = (info.config?.target.map { DropAppManager.abbreviate(URL(fileURLWithPath: $0)) } ?? "—")
+                + (info.config?.mode == .copy ? "  (copies)" : "")
         default:
             let (text, color) = DropAppManager.statusText(info)
             label.stringValue = text
@@ -527,13 +546,16 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         save.prompt = "Create"
         save.message = "Step 2 of 2: name and place of the drop app (usually the folder you sort from)."
         save.directoryURL = baseURL
+        let copyCheck = NSButton(checkboxWithTitle: "Copy instead of move", target: nil, action: nil)
+        copyCheck.frame.size = copyCheck.fittingSize
+        save.accessoryView = copyCheck
         guard save.runModal() == .OK, let url = save.url else { return }
 
         let rel = baseURL.flatMap { FolderIndex.relativePath(of: target, in: $0) }
         // Same naming as a drop on that folder in Drop Sorter; changeable later in the drop app's window.
         let pattern = rel.flatMap { config.renamePattern(forTarget: $0) } ?? SorterConfig.keepNamePattern
         do {
-            try dropApps.create(at: url, target: target, pattern: pattern)
+            try dropApps.create(at: url, target: target, pattern: pattern, mode: copyCheck.state == .on ? .copy : .move)
             errorLabel.stringValue = ""
             addDropApps([url])
             NSWorkspace.shared.activateFileViewerSelecting([url])

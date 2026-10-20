@@ -34,7 +34,8 @@ struct SorterConfig: Codable, Equatable {
     /// Folder -> rename rule for items moved there. The most specific applicable rule wins; `{original}`
     /// keeps the name, e.g. for a subfolder of a renamed tree.
     var renameRules: [String: RenameRule] = [:]
-    var favorites: [String] = []
+    /// Folders with their own spot on the shelf; dropping there moves (or copies) at once.
+    var favorites: [Favorite] = []
     var exclude: [String] = []
     var aliases: [String: [String]] = [:]
     /// Space-separated extensions -> folder, e.g. "heic jpg png": "50 Attachments/Images".
@@ -56,7 +57,7 @@ struct SorterConfig: Codable, Equatable {
         if let a = try legacy.decodeIfPresent(LegacyArchive.self, forKey: .archive), renameRules[a.folder] == nil {
             renameRules[a.folder] = RenameRule(pattern: a.pattern ?? Renamer.defaultPattern)
         }
-        favorites = try c.decodeIfPresent([String].self, forKey: .favorites) ?? []
+        favorites = try c.decodeIfPresent([Favorite].self, forKey: .favorites) ?? []
         exclude = try c.decodeIfPresent([String].self, forKey: .exclude) ?? []
         aliases = try c.decodeIfPresent([String: [String]].self, forKey: .aliases) ?? [:]
         extensionRules = try c.decodeIfPresent([String: String].self, forKey: .extensionRules) ?? [:]
@@ -70,13 +71,15 @@ struct SorterConfig: Codable, Equatable {
         dropApps.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) }
     }
 
+    var favoritePaths: [String] { favorites.map(\.folder) }
+
     var baseURL: URL? {
         base.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath, isDirectory: true) }
     }
 
     /// Checks everything that can be checked without touching the file system. Call at startup and before saving.
     func validate() throws {
-        let relative = favorites + exclude + Array(aliases.keys) + Array(extensionRules.values) + Array(renameRules.keys)
+        let relative = favoritePaths + exclude + Array(aliases.keys) + Array(extensionRules.values) + Array(renameRules.keys)
         if let bad = relative.first(where: { $0.hasPrefix("/") || $0.isEmpty }) { throw SorterConfigError.notRelative(bad) }
         for pattern in renameRules.values.map(\.pattern).sorted() {
             do { _ = try Renamer.render(pattern, originalName: "x.pdf", isDirectory: false, date: Date()) }
@@ -114,6 +117,48 @@ struct SorterConfig: Codable, Equatable {
             }
         }
         return MatchRules(aliases: aliases, extensions: ext, minScore: suggest.minScore, minMargin: suggest.minMargin)
+    }
+}
+
+/// A favorite folder. In the file either just the folder, or `{folder: …, copy: true}` for a spot
+/// that always copies (e.g. a backup folder).
+struct Favorite: Codable, Equatable, ExpressibleByStringLiteral {
+    var folder: String
+    var copy = false
+
+    init(folder: String, copy: Bool = false) {
+        self.folder = folder
+        self.copy = copy
+    }
+
+    init(stringLiteral value: String) { self.init(folder: value) }
+
+    var mode: TransferMode { copy ? .copy : .move }
+
+    private enum CodingKeys: String, CodingKey { case folder, copy }
+
+    init(from decoder: Decoder) throws {
+        let textError: Error
+        do {
+            self.init(folder: try decoder.singleValueContainer().decode(String.self))
+            return
+        } catch { textError = error }
+        // Not text: the long form. If it is not a mapping either, report the short form's error,
+        // which says "expected text" (the common mistake is an unquoted 2026).
+        guard let c = try? decoder.container(keyedBy: CodingKeys.self) else { throw textError }
+        self.init(folder: try c.decode(String.self, forKey: .folder),
+                  copy: try c.decodeIfPresent(Bool.self, forKey: .copy) ?? false)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        if copy {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(folder, forKey: .folder)
+            try c.encode(copy, forKey: .copy)
+        } else {
+            var c = encoder.singleValueContainer()
+            try c.encode(folder)
+        }
     }
 }
 

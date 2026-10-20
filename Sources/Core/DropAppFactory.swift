@@ -170,11 +170,7 @@ enum DropAppFactory {
         return retired
     }
 
-    static func trash(_ url: URL) throws -> URL? {
-        var result: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-        return result as URL?
-    }
+    static func trash(_ url: URL) throws -> URL? { try Mover.trash(url) }
 
     /// Hidden sibling on the same volume, so the final move is a rename.
     private static func stagingURL(for url: URL) -> URL {

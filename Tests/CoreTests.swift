@@ -99,6 +99,28 @@ func moverTests() throws {
     eq(bad.failures.map(\.name), ["Scans"])
     eq(bad.moved.map(\.lastPathComponent), ["b.txt"])
 
+    // Copy: originals stay, copies never overwrite, Undo removes only the copies.
+    let fakeTrash = root.appendingPathComponent("Trash")
+    try fm.createDirectory(at: fakeTrash, withIntermediateDirectories: true)
+    try touch(src.appendingPathComponent("c.txt"), "orig")
+    let c1 = Mover.move([src.appendingPathComponent("c.txt")], to: target, pattern: nil, mode: .copy)
+    let c2 = Mover.move([src.appendingPathComponent("c.txt")], to: target, pattern: "{name}-copy{ext}", mode: .copy)
+    eq(c1.mode, .copy)
+    eq(c1.moved.map(\.lastPathComponent) + c2.moved.map(\.lastPathComponent), ["c.txt", "c-copy.txt"])
+    check(fm.fileExists(atPath: src.appendingPathComponent("c.txt").path), "original kept")
+    let uc = Mover.undo(c1) { url in
+        let d = fakeTrash.appendingPathComponent(url.lastPathComponent)
+        try fm.moveItem(at: url, to: d)
+        return d
+    }
+    eq(uc.failures.count, 0)
+    check(!fm.fileExists(atPath: target.appendingPathComponent("c.txt").path), "copy removed")
+    check(fm.fileExists(atPath: fakeTrash.appendingPathComponent("c.txt").path), "copy in the trash")
+    check(fm.fileExists(atPath: src.appendingPathComponent("c.txt").path), "original untouched by undo")
+    check(fm.fileExists(atPath: target.appendingPathComponent("c-copy.txt").path), "other copy untouched")
+    // A folder cannot be copied into itself either.
+    eq(Mover.move([src.appendingPathComponent("Scans")], to: inner, pattern: nil, mode: .copy).failures.count, 1)
+
     // Missing source is a per-item failure, not a crash.
     eq(Mover.move([src.appendingPathComponent("gone.pdf")], to: target, pattern: nil).failures.count, 1)
 }
@@ -115,7 +137,7 @@ func sorterConfigTests() throws {
                      "40 Resources/Scans": "{date:yyyyMMdd}-{name}{ext}",
                      "00 Inbox": {"pattern": "{date}_{name}{ext}", "subfolders": false},
                      "00 Inbox/Mail": {"pattern": "{name}{ext}"}},
-     "favorites": ["00 Inbox"],
+     "favorites": ["00 Inbox", {"folder": "80 Backup", "copy": true}],
      "extensionRules": {"heic .JPG, png": "50 Attachments/Images"},
      "suggest": {"minScore": 2, "minMargin": 0.5}}
     """
@@ -156,6 +178,13 @@ func sorterConfigTests() throws {
     check(reencoded.contains("renameRules"), "renameRules written")
     eq(cfg.matchRules.extensions, ["heic": "50 Attachments/Images", "jpg": "50 Attachments/Images", "png": "50 Attachments/Images"])
     eq(cfg.matchRules.minScore, 2)
+    eq(cfg.favorites, ["00 Inbox", Favorite(folder: "80 Backup", copy: true)])
+    eq(cfg.favoritePaths, ["00 Inbox", "80 Backup"])
+    eq(cfg.favorites.map(\.mode), [.move, .copy])
+    // Short form unless it copies.
+    let sorted = JSONEncoder()
+    sorted.outputFormatting = .sortedKeys
+    eq(String(decoding: try sorted.encode(cfg.favorites), as: UTF8.self), #"["00 Inbox",{"copy":true,"folder":"80 Backup"}]"#)
 
     func invalid(_ mutate: (inout SorterConfig) -> Void) -> SorterConfigError? {
         var c = SorterConfig(); mutate(&c)

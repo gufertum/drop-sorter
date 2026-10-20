@@ -47,6 +47,12 @@ func renamerTests() throws {
     let cfg = DropConfig(target: "/Users/x/Archive", pattern: "{name}{ext}")
     try store.save(cfg)
     eq(try store.load(), cfg)
+    let copying = DropConfig(target: "/Users/x/Backup", pattern: "{original}", mode: .copy)
+    try store.save(copying)
+    eq(try store.load(), copying)
+    // Older copies have no "mode" (and maybe no "pattern"): defaults.
+    try Data(#"{"target":"/x"}"#.utf8).write(to: store.url)
+    eq(try store.load(), DropConfig(target: "/x", pattern: Renamer.defaultPattern, mode: .move))
     try Data("{not json".utf8).write(to: store.url)
     check((try? store.load()) == nil, "corrupt config must throw")
 }

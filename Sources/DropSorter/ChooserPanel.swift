@@ -6,6 +6,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     /// Called once: the chosen folder path, or nil when the user left.
     var onFinish: ((String?) -> Void)?
     private var model: ChooserModel
+    private let mode: TransferMode
     private let renamePattern: (String) -> String?
     private let field = NSTextField()
     private let table = NSTableView()
@@ -13,8 +14,9 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     private let rename = NSTextField(labelWithString: "")
     private var finished = false
 
-    init(model: ChooserModel, renamePattern: @escaping (String) -> String?) {
+    init(model: ChooserModel, mode: TransferMode = .move, renamePattern: @escaping (String) -> String?) {
         self.model = model
+        self.mode = mode
         self.renamePattern = renamePattern
         super.init(contentRect: NSRect(x: 0, y: 0, width: 600, height: 440),
                    styleMask: [.borderless], backing: .buffered, defer: false)
@@ -47,7 +49,8 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         content.layer?.masksToBounds = true
 
         let names = model.items.map { $0.isDirectory ? $0.name + "/" : $0.name }
-        let what = NSTextField(labelWithString: "Sort \(names.count) item\(names.count == 1 ? "" : "s"): " + names.joined(separator: ", "))
+        let verb = mode == .copy ? "Copy" : "Sort"
+        let what = NSTextField(labelWithString: "\(verb) \(names.count) item\(names.count == 1 ? "" : "s"): " + names.joined(separator: ", "))
         what.font = .systemFont(ofSize: 12, weight: .semibold)
         what.lineBreakMode = .byTruncatingTail
         what.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -86,7 +89,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         rename.lineBreakMode = .byTruncatingMiddle
         rename.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let help = NSTextField(labelWithString: "↵ move   ⇥ into folder   ↑↓ select   esc leave the files where they are")
+        let help = NSTextField(labelWithString: "↵ \(mode == .copy ? "copy" : "move")   ⇥ into folder   ↑↓ select   esc leave the files where they are")
         help.font = .systemFont(ofSize: 10)
         help.textColor = .tertiaryLabelColor
 
