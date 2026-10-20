@@ -18,6 +18,18 @@ let template = ProcessInfo.processInfo.environment["DROPSORTER_TEMPLATE"].map { 
     ?? (FileManager.default.fileExists(atPath: bundledTemplate.path) ? bundledTemplate : nil)
 
 let service = SortService(template: template)
+
+// MCP over stdio: one JSON-RPC message per line in, one per line out, flushed at once.
+if CommandLine.arguments.dropFirst().first == "mcp" {
+    Mover.logPrefix = "dropsorter-mcp"
+    let server = MCPServer(service: service)
+    while let line = readLine(strippingNewline: true) {
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty, let reply = server.handle(line) else { continue }
+        FileHandle.standardOutput.write(Data((reply + "\n").utf8))
+    }
+    exit(0)
+}
+
 let status = CLI.run(Array(CommandLine.arguments.dropFirst()), service: service,
                      out: { print($0) },
                      err: { messages.write(Data(($0 + "\n").utf8)) })

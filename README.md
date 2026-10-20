@@ -95,6 +95,25 @@ outside folders). Set `DROPSORTER_LOG=1` to see the engine's log lines.
 operation that changed nothing keeps the previous one undoable. Undo of a copy moves the copies to the
 Trash.
 
+## MCP (AI agents)
+
+`dropsorter mcp` is an MCP server over stdio. Tools: `list_folders`, `suggest_folder`, `sort_files`
+(move or copy, explicit folder or `auto` for clear matches only, `dry_run`), `undo_last`,
+`last_operation`, `get_config`, `list_drop_apps`. It cannot change the configuration. Errors come back
+as tool errors with a code (`nothing_to_undo: …`), so the agent can react.
+
+Claude Code:
+
+```bash
+claude mcp add drop-sorter -- ~/.local/bin/dropsorter mcp
+```
+
+Other clients (JSON config):
+
+```json
+{"mcpServers": {"drop-sorter": {"command": "/Applications/Drop Sorter.app/Contents/MacOS/dropsorter", "args": ["mcp"]}}}
+```
+
 ## How a folder is suggested
 
 Names are split into words (separators, camelCase, letter/digit boundaries), lowercased, umlauts
