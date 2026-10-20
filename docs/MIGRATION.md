@@ -69,7 +69,7 @@ later in the app window:
 ### 1. Build
 
 ```bash
-cd ~/git/_sudo/lab/drop-mover && ./build.sh
+cd ~/git/_sudo/lab/drop-sorter && ./build.sh
 ```
 
 ### 2. Back up the old apps
@@ -95,7 +95,7 @@ done
 
 ```bash
 BASE=~/Documents/2ndBrain-Files
-I=~/git/_sudo/lab/drop-mover/scripts/install-copy.sh
+I=~/git/_sudo/lab/drop-sorter/scripts/install-copy.sh
 $I "$BASE/00-Inbox"                  _archiviere-belege-und-korrespondenz "$BASE/04-Archive/Belege-und-Korrespondenz"
 $I "$BASE/00-Inbox/Gutscheine"       _archiviere-gutscheine               "$BASE/04-Archive/Gutscheine-erledigt"
 $I "$BASE/00-Inbox/Lesestoff"        _verschiebe-in-ressourcen-lesestoff  "$BASE/03-Ressourcen/Lesestoff"

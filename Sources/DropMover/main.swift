@@ -1,39 +1,5 @@
 import AppKit
 
-// MARK: - Moving
-
-struct MoveResult {
-    var moved: [URL] = []
-    var failures: [(name: String, reason: String)] = []
-}
-
-/// Renames each dropped file or folder with the pattern and moves it into `target`.
-/// Folders are moved with their content; only the top-level folder is renamed.
-func moveItems(_ urls: [URL], to target: URL, pattern: String, now: Date = Date()) -> MoveResult {
-    let fm = FileManager.default
-    var result = MoveResult()
-    for src in urls {
-        let name = src.lastPathComponent
-        do {
-            if src.standardizedFileURL == target.standardizedFileURL {
-                throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSLocalizedDescriptionKey: "Cannot move the target folder into itself."])
-            }
-            let isDir = (try? src.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            let newName = try Renamer.render(pattern, originalName: name, isDirectory: isDir, date: now)
-            let dest = Renamer.uniqueDestination(in: target, name: newName, isDirectory: isDir) {
-                fm.fileExists(atPath: $0.path)
-            }
-            try fm.moveItem(at: src, to: dest)
-            result.moved.append(dest)
-        } catch {
-            NSLog("DropMover: failed to move '%@' to '%@': %@", src.path, target.path, error.localizedDescription)
-            result.failures.append((name, error.localizedDescription))
-        }
-    }
-    NSLog("DropMover: moved %d item(s) to '%@', %d failure(s)", result.moved.count, target.path, result.failures.count)
-    return result
-}
-
 // MARK: - Toast
 
 /// Clickable, non-activating overlay in the top-right corner. Stays while hovered.
@@ -245,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             alert("Target folder not found", target.path)
             return
         }
-        let result = moveItems(urls, to: target, pattern: config.pattern)
+        let result = Mover.move(urls, to: target, pattern: config.pattern)
         showToast(result, target: target)
     }
 
