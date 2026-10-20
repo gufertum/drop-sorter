@@ -31,4 +31,11 @@ func nonSpotDestinations(_ v: NSView) -> [String] {
 }
 check(nonSpotDestinations(shelf.contentView!).isEmpty, "shelf drag destinations besides spots: \(nonSpotDestinations(shelf.contentView!))")
 
+// Every favorite spot has its own colour (as long as the palette lasts); the main spot uses the accent.
+let five = ShelfPanel(menu: NSMenu())
+five.setFavorites(["A", "B", "C", "D", "E"], missing: [])
+check(Set(five.favoriteSpotViews.map { $0.color }).count == 5, "distinct colours per favorite")
+check(five.frame.width >= ShelfPanel.width, "shelf at least \(ShelfPanel.width) pt wide: \(five.frame.width)")
+check(ShelfPanel.width >= 300, "shelf width")
+
 if failures == 0 { print("All UI checks passed.") } else { print("\(failures) UI failure(s)"); exit(1) }
