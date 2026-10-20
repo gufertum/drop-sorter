@@ -19,6 +19,10 @@ echo "==> tests"
 "${SWIFTC[@]}" "${CORE[@]}" Tests/*.swift -o "$BUILD/obj/tests"
 "$BUILD/obj/tests"
 
+echo "==> UI checks"
+"${SWIFTC[@]}" "${CORE[@]}" Sources/DropSorter/ShelfPanel.swift Tests/UI/main.swift -o "$BUILD/obj/uitests"
+"$BUILD/obj/uitests"
+
 echo "==> dropsorter (command line)"
 "${SWIFTC[@]}" -target "$(uname -m)-apple-macos$MIN_OS" "${CORE[@]}" Sources/CLI/main.swift -o "$BUILD/dropsorter"
 

@@ -217,6 +217,9 @@ final class DropSpot: NSView {
         let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!)
         icon.symbolConfiguration = .init(pointSize: compact ? 11 : 30, weight: compact ? .regular : .light)
         icon.contentTintColor = compact ? .systemYellow : .controlAccentColor
+        // NSImageView registers itself for file drags; over the icon it would take the drag away from
+        // the spot (highlight off, drop lost). Only the spot itself is a drop target.
+        icon.unregisterDraggedTypes()
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 11, weight: compact ? .medium : .regular)
         label.textColor = compact ? .labelColor : .secondaryLabelColor
