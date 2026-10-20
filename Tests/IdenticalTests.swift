@@ -50,7 +50,7 @@ func identicalServiceTests() throws {
     let trash = root.appendingPathComponent("Trash")
     try fm.createDirectory(at: trash, withIntermediateDirectories: true)
     let service = SortService(home: home)
-    service.removeCopy = { url in
+    service.moveToTrash = { url in
         let d = trash.appendingPathComponent(url.lastPathComponent)
         try fm.moveItem(at: url, to: d)
         return d
@@ -85,4 +85,41 @@ func identicalServiceTests() throws {
     eq(skipped.items.count, 0)
     eq(skipped.skipped.count, 1)
     eq(try service.lastOperation(), nil)
+}
+
+func trashTests() throws {
+    let fm = FileManager.default
+    let root = try makeTempDir("trash")
+    defer { try? fm.removeItem(at: root) }
+    let home = root.appendingPathComponent("home")
+    try fm.createDirectory(at: home, withIntermediateDirectories: true)
+    let trash = root.appendingPathComponent("Trash")
+    try fm.createDirectory(at: trash, withIntermediateDirectories: true)
+    let service = SortService(home: home)
+    service.moveToTrash = { url in
+        let d = trash.appendingPathComponent(url.lastPathComponent)
+        try fm.moveItem(at: url, to: d)
+        return d
+    }
+    let dl = root.appendingPathComponent("dl")
+    try touch(dl.appendingPathComponent("junk.pdf"))
+    try touch(dl.appendingPathComponent("Old/x.txt"))
+
+    // Works without any target folder; the journal holds it; Undo puts everything back.
+    let o = try service.trash([dl.appendingPathComponent("junk.pdf"), dl.appendingPathComponent("Old"),
+                               dl.appendingPathComponent("gone.pdf")], source: "app")
+    eq(o.display, "Trash")
+    eq(o.result.moves.count, 2)
+    eq(o.result.failures.map(\.name), ["gone.pdf"])
+    check(!fm.fileExists(atPath: dl.appendingPathComponent("junk.pdf").path), "in the trash")
+    eq(try service.lastOperation()?.display, "Trash")
+    eq(try service.history().counts.isEmpty, true)  // nothing learned
+    let back = try service.undo()
+    eq(back.items.count, 2)
+    check(fm.fileExists(atPath: dl.appendingPathComponent("junk.pdf").path), "back from the trash")
+    check(fm.fileExists(atPath: dl.appendingPathComponent("Old/x.txt").path), "folder back with content")
+
+    // The shelf setting: on by default, off when the file says so.
+    eq(SorterConfig().shelf.trash, true)
+    eq(try JSONDecoder().decode(SorterConfig.self, from: Data(#"{"shelf": {"trash": false}}"#.utf8)).shelf.trash, false)
 }

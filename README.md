@@ -43,6 +43,8 @@ so it is easy to find.
   names. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
   the files where they are, ⇥ steps into the selected folder, ↑↓ select.
 - **Favorite spots** (★): dropping there moves at once. The toast offers Undo and Reveal in Finder.
+- **Trash spot** (bottom of the shelf, Settings › Shelf turns it off): moves items to the Trash at
+  once; Undo puts them back where they were.
 - **Copy instead of move**: hold ⌥ while dropping (the cursor shows the green +), like in Finder. A
   favorite can be set to always copy (shown with a copy symbol), and so can a drop app. Undo of a copy
   moves the copies to the Trash; the originals are never touched.
@@ -211,6 +213,7 @@ suggest:
 shelf:
   showOnDesktop: true
   hideDelayMs: 400
+  trash: true        # Trash spot at the bottom of the shelf
 menuBarIcon: true    # default; false hides the icon
 api:                 # REST API, Settings › General › API
   enabled: false

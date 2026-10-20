@@ -12,7 +12,7 @@ struct SorterConfigStore {
     /// Key order for written YAML: the order of the README, not the alphabet.
     static let keyOrder = ["targets", "path", "renameRules", "favorites", "exclude", "aliases",
                            "extensionRules", "suggest", "minScore", "minMargin", "shelf", "showOnDesktop",
-                           "hideDelayMs", "menuBarIcon", "api", "enabled", "port", "dropApps", "pattern", "subfolders", "folder", "copy"]
+                           "hideDelayMs", "trash", "menuBarIcon", "api", "enabled", "port", "dropApps", "pattern", "subfolders", "folder", "copy"]
 
     let directory: URL
     var yamlURL: URL { directory.appendingPathComponent("config.yaml") }

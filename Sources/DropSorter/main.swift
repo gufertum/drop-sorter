@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shelf.onDrop = { [weak self] urls, mode in self?.beginSort(urls, mode: mode) }
         shelf.onDropFavorite = { [weak self] fav, urls, mode in self?.sortIntoFavorite(urls, fav.folder, mode: mode) }
         shelf.onSettings = { [weak self] in self?.showSettings() }
+        shelf.onDropTrash = { [weak self] urls in self?.trash(urls) }
         shelf.onDragOver = { [weak self] over in
             self?.dragOver = over
             self?.updateShelf()
@@ -99,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             !FileManager.default.fileExists(atPath: SorterConfig.folderID($0))
         })
         shelf.setFavorites(config.favorites, missing: missing)
+        shelf.setTrash(config.shelf.trash)
         if config.menuBarIcon && menuBar == nil {
             menuBar = MenuBarItem(menu: buildMenu(includeShowShelf: true))
             menuBar?.onDrop = { [weak self] urls, mode in self?.beginSort(urls, mode: mode) }
@@ -279,6 +281,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Trash spot: to the Trash at once; the toast's Undo (or Undo Last Drop) puts everything back.
+    private func trash(_ urls: [URL]) {
+        guard chooser == nil, !urls.isEmpty else { return }
+        do {
+            showResult(try service.trash(urls, source: "app"))
+        } catch {
+            showError("Not moved to the Trash", [error.localizedDescription], openConfig: false)
+        }
+    }
+
     /// Only the most recent operation (a drop, or a CLI/API call) can be undone, once.
     @objc private func undoLastDrop() { undo(id: nil) }
 
@@ -315,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
         let failed = !r.failures.isEmpty
         let title = r.failures.isEmpty
-            ? "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)"
+            ? (o.display == SortService.trashName ? "Moved \(plural(r.moved.count)) to the Trash" : "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)")
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
         var actions: [SortToast.Action] = []
         if !r.moves.isEmpty {

@@ -21,6 +21,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let favoriteButtons = NSSegmentedControl()
     private let desktopCheck = NSButton(checkboxWithTitle: "Also show it on the bare desktop (no Finder window open)", target: nil, action: nil)
     private let delayField = NSTextField()
+    private let trashCheck = NSButton(checkboxWithTitle: "Show a Trash spot at the bottom of the shelf", target: nil, action: nil)
     private let menuBarCheck = NSButton(checkboxWithTitle: "Show the Drop Sorter icon in the menu bar", target: nil, action: nil)
     private let loginCheck = NSButton(checkboxWithTitle: "Open Drop Sorter at login", target: nil, action: nil)
     private let loginNote = NSTextField(labelWithString: "")
@@ -140,6 +141,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         delayField.alignment = .right
         let delayRow = NSStackView(views: [NSTextField(labelWithString: "Hide it"), delayField,
                                            NSTextField(labelWithString: "ms after another app becomes active")])
+        trashCheck.target = self
+        trashCheck.action = #selector(trashToggled)
         menuBarCheck.target = self
         menuBarCheck.action = #selector(menuBarChanged)
         loginCheck.target = self
@@ -202,7 +205,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         let shelfPane: [[NSView]] = [
             [heading("Favorites"), favScroll, favoriteButtons,
              small("Each favorite gets its own coloured spot on the shelf. Dropping there moves at once (or copies, with Copy on), with Undo in the toast.")],
-            [heading("Shelf"), desktopCheck, delayRow, menuBarCheck],
+            [heading("Shelf"), desktopCheck, delayRow, trashCheck, menuBarCheck],
         ]
         let dropPane: [[NSView]] = [
             [heading("Drop apps"), dropScroll, dropButtons, dropNote,
@@ -296,6 +299,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         desktopCheck.state = config.shelf.showOnDesktop ? .on : .off
         delayField.integerValue = config.shelf.hideDelayMs
         menuBarCheck.state = config.menuBarIcon ? .on : .off
+        trashCheck.state = config.shelf.trash ? .on : .off
         refreshLogin()
         dropInfos = config.dropAppURLs.map(dropApps.inspect)
         dropTable.reloadData()
@@ -525,6 +529,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     }
 
     @objc private func shelfChanged() { commit { $0.shelf.showOnDesktop = desktopCheck.state == .on } }
+    @objc private func trashToggled() { commit { $0.shelf.trash = trashCheck.state == .on } }
     @objc private func menuBarChanged() { commit { $0.menuBarIcon = menuBarCheck.state == .on } }
 
     @objc private func forgetHistory() {
