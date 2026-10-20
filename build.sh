@@ -1,33 +1,37 @@
 #!/usr/bin/env bash
-# Builds "build/<name>.app" (default "Drop Mover") after running the unit tests.
-# Usage: ./build.sh ["App Name"]
+# Runs the unit tests, then builds "build/suggest" and "build/Drop Mover.app".
+# Usage: ./build.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_NAME="${1:-Drop Mover}"
 BUILD=build
-APP="$BUILD/$APP_NAME.app"
 MIN_OS=13.0
 SWIFTC=(swiftc -swift-version 5 -O)
+CORE=(Sources/Core/*.swift)
 
 rm -rf "$BUILD"
-mkdir -p "$BUILD/obj" "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$BUILD/obj"
 
 echo "==> tests"
-"${SWIFTC[@]}" Sources/Renamer.swift Sources/Config.swift Tests/main.swift -o "$BUILD/obj/tests"
+"${SWIFTC[@]}" "${CORE[@]}" Tests/*.swift -o "$BUILD/obj/tests"
 "$BUILD/obj/tests"
 
-echo "==> icon"
-"${SWIFTC[@]}" Sources/IconRenderer.swift Tools/make-icon/main.swift -o "$BUILD/obj/make-icon"
-"$BUILD/obj/make-icon" "$BUILD/obj/AppIcon.iconset"
-iconutil -c icns "$BUILD/obj/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
+echo "==> suggest tool"
+"${SWIFTC[@]}" "${CORE[@]}" Tools/suggest/main.swift -o "$BUILD/suggest"
 
-echo "==> app"
+echo "==> icon"
+"${SWIFTC[@]}" Sources/DropMover/IconRenderer.swift Tools/make-icon/main.swift -o "$BUILD/obj/make-icon"
+"$BUILD/obj/make-icon" "$BUILD/obj/AppIcon.iconset"
+
+echo "==> Drop Mover"
+APP="$BUILD/Drop Mover.app"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+iconutil -c icns "$BUILD/obj/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 # Host architecture only: the Command Line Tools ship no x86_64 Swift compatibility libs.
 "${SWIFTC[@]}" -target "$(uname -m)-apple-macos$MIN_OS" \
-  Sources/main.swift Sources/Renamer.swift Sources/Config.swift Sources/IconRenderer.swift \
+  "${CORE[@]}" Sources/DropMover/*.swift \
   -o "$APP/Contents/MacOS/DropMover"
-cp Info.plist "$APP/Contents/Info.plist"
+cp Resources/DropMover/Info.plist "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # The bundle is deliberately not sealed with codesign: each copy writes its config.json into

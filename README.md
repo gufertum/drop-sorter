@@ -1,87 +1,87 @@
-# Drop Mover 🎯
+# Drop Sorter
 
-A tiny macOS app that acts as a drop target: drop files or folders on it, and they are renamed with a
-date/time prefix and moved into a target folder. Copy and rename the app as often as you like. Each
-copy has its own target folder and rename pattern.
+A macOS shelf for sorting files into an Obsidian vault. The shelf slides in while Finder is the active
+app. Drop files or folders on it and a chooser suggests the target folder from the file names. Type to
+narrow the list, press Return to move, Esc to leave everything where it was. Every subfolder of the
+vault is a target; favorites get their own drop spot on the shelf and move at once. Items moved into
+the archive folder get a date prefix.
 
-## Features
+Drop Sorter also builds and manages **Drop Mover** apps, standalone drop targets for one fixed folder
+(see [docs/DROP-MOVER.md](docs/DROP-MOVER.md)). Drop Mover used to live in `lab/drop-mover`; its code
+and history are in this repository now.
 
-- **Drop** files or folders onto the app icon (Finder, Dock) or onto the drop zone in its window.
-- **Rename** with a configurable pattern, default `{date}_{time}_{name}{ext}` →
-  `2026-10-10_14-03-22_invoice.pdf`.
-- **Folders** are moved with their content. Only the top-level folder is renamed.
-- **Never overwrites**: on a name clash the new item gets `-2`, `-3`, … before the extension.
-- **Toast** in the top-right corner lists the new names. Click it to open the target in Finder with
-  the moved items selected. It stays while hovered and closes after 8 s (20 s if something failed).
-- **Window** (double-click the app): shows and changes the target folder and the pattern, with a
-  live preview.
-- **Icon**: 🎯 with a banner showing the target folder name, so copies can be told apart in Finder,
-  the preview pane and the Dock.
+Concept and GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
+
+## Status
+
+| Phase | Content | State |
+|---|---|---|
+| 1 | Repository layout, tested core (matcher, folder index, history, mover, config) | done |
+| 2 | Shelf, chooser, toast with Undo | open |
+| 3 | Settings, favorites, optional menu-bar icon, open at login | open |
+| 4 | Generate, update and adopt Drop Mover apps | open |
+
+Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
 
 ## Build
 
 Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, Apple Silicon.
 
 ```bash
-./build.sh                # runs the unit tests, then builds "build/Drop Mover.app"
+./build.sh      # unit tests, build/suggest, build/Drop Mover.app
 ```
 
-## Create a copy
+## Try the suggestions
 
-Either copy it by hand and set the target in the window:
+`build/suggest` runs the matcher against a real folder tree, without the app:
 
 ```bash
-cp -R "build/Drop Mover.app" ~/Documents/Inbox/_archive-invoices.app
-open ~/Documents/Inbox/_archive-invoices.app
+build/suggest ~/Obsidian/Private "Rechnung_Swisscom_2026-09.pdf" "invoice-hetzner.pdf"
+build/suggest -q "fin inv" ~/Obsidian/Private "scan.pdf"          # what the chooser shows after typing
+build/suggest -c config.json ~/Obsidian/Private "old-notes/"       # trailing "/" = folder
 ```
 
-or create a configured copy in one step:
+It prints the preselected folder (or `none` when the match is not clear) and the top 8 folders with
+their score and the reasons.
 
-```bash
-scripts/install-copy.sh ~/Documents/Inbox _archive-invoices ~/Documents/Archive/Invoices
-scripts/install-copy.sh ~/Documents/Inbox _keep-names ~/Documents/Archive "{original}"
-```
+## How a folder is suggested
 
-The script validates the build, the folders and the pattern, and refuses to overwrite an existing
-app.
+Names are split into words (separators, camelCase, letter/digit boundaries), lowercased, umlauts
+spelled out (`Steuererklärung` → `steuererklaerung`), stop words and bare numbers except years
+removed. Each word is compared with each folder:
 
-## Rename pattern
+| Signal | Points |
+|---|---|
+| Word equals the folder name | +3 (a year: +2) |
+| Word matches the folder name by prefix (5+ shared letters, 75 % of the shorter word) | +2 |
+| Word matches an alias of the folder | +2 |
+| Word matches a parent folder | +1 |
+| Extension rule points to the folder | +3 |
+| Word was moved to the folder before | +1 per time, at most +4 |
 
-| Token | Meaning | Example (`invoice.pdf`, 2026-10-10 14:03:22) |
-|---|---|---|
-| `{date}` | `yyyy-MM-dd` | `2026-10-10` |
-| `{time}` | `HH-mm-ss` | `14-03-22` |
-| `{date:FORMAT}` | any [ICU date format](https://unicode-org.github.io/icu/userguide/format_parse/datetime/#datetime-format-syntax) | `{date:yyyyMMdd-HHmm}` → `20261010-1403` |
-| `{name}` | name without extension | `invoice` |
-| `{ext}` | extension with dot, empty for folders | `.pdf` |
-| `{original}` | full original name | `invoice.pdf` |
-
-All items of one drop share the same timestamp. A pattern must not produce `/`.
+With several items the scores are averaged. A folder is preselected only when it scores at least
+`suggest.minScore` (3) and leads the next one by `suggest.minMargin` (1); otherwise Return does nothing
+until a folder is picked. After typing, each space-separated term must match the path (as substring
+or in order); matches at the start of a path segment rank first.
 
 ## Configuration
 
-Stored per copy in `<copy>.app/Contents/Resources/config.json`:
+`~/Library/Application Support/li.sudo.dropsorter/config.json`, every key optional:
 
 ```json
-{"pattern":"{date}_{time}_{name}{ext}","target":"/Users/me/Documents/Archive/Invoices"}
+{
+  "base": "~/Obsidian/Private",
+  "archive": { "folder": "90 Archive", "pattern": "{date}_{time}_{name}{ext}" },
+  "favorites": ["00 Inbox", "30 Areas/Finance/Invoices", "90 Archive"],
+  "exclude": ["50 Attachments/_excalidraw"],
+  "aliases": { "30 Areas/Finance/Invoices": ["rechnung", "bill"] },
+  "extensionRules": { "heic jpg png": "50 Attachments/Images" },
+  "suggest": { "minScore": 3, "minMargin": 1 },
+  "shelf": { "showOnDesktop": true, "hideDelayMs": 400 },
+  "menuBarIcon": false
+}
 ```
 
-- A copy of a configured app starts with the same settings. Change them in its window.
-- The app bundle must be writable. Do not put copies where your user cannot write, such as
-  `/Applications` without admin rights.
-- The bundle is intentionally not code-signed as a whole (writing `config.json` would break the
-  seal). The binary carries the linker's ad-hoc signature, which is enough for locally built apps.
-  Copies moved to another Mac through a download get quarantined; remove that with
-  `xattr -dr com.apple.quarantine <copy>.app`.
-
-## Troubleshooting
-
-- **Log**: `log show --last 10m --predicate 'process == "DropMover"' --style compact`
-- **"No target folder set"**: double-click the copy and choose a target.
-- **Icon still shows the old label**: Finder caches icons; `killall Finder` refreshes it.
-
-## Development
-
-See [CLAUDE.md](CLAUDE.md). Sources: `Sources/main.swift` (AppKit UI, toast, move logic),
-`Sources/Renamer.swift` (pattern, name clash handling), `Sources/Config.swift` (per-copy config),
-`Sources/IconRenderer.swift` (🎯 icon), `Tests/main.swift` (unit tests, no XCTest needed).
+All folder paths are relative to `base`. Hidden folders (`.obsidian`, `.trash`, `.git`) and packages
+are never targets. The archive pattern uses the Drop Mover tokens (see
+[docs/DROP-MOVER.md](docs/DROP-MOVER.md#rename-pattern)).

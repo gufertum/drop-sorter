@@ -1,36 +1,56 @@
 # CLAUDE.md
 
-Drop Mover: a native macOS drop-target app (Swift 5 language mode, AppKit, no Xcode project,
-no dependencies). Files dropped onto a copy are renamed with a pattern and moved to that copy's
-target folder. See README.md for the user-facing behaviour, MIGRATION.md for replacing the old
-Automator/AppleScript drop apps.
+Drop Sorter: a macOS agent app (Swift 5 language mode, AppKit, no Xcode project, no dependencies).
+A shelf shown while Finder is active takes dropped files and moves them into a subfolder of the
+Obsidian vault, chosen with a name-based suggestion and a filter. The repository also contains Drop
+Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter will generate and update.
+User-facing docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
+Concept with GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
+
+## Layout
+
+- `Sources/Core/` Foundation only, shared by both apps and the tests: Renamer, Mover, Tokenizer,
+  Matcher, FolderIndex, History, JSONStore, SorterConfig, DropMoverConfig.
+- `Sources/DropMover/` Drop Mover app (AppKit). `Resources/DropMover/Info.plist`.
+- `Sources/DropSorter/` Drop Sorter app (phase 2, not there yet).
+- `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
+- `Tools/` make-icon (iconset), suggest (matcher CLI).
 
 ## Build and test
 
 ```bash
-./build.sh                 # unit tests (Tests/main.swift), icon generation, app -> build/Drop Mover.app
-scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured copy
+./build.sh      # tests, build/suggest, build/Drop Mover.app
+scripts/install-copy.sh <folder> <name> <target> [pattern]   # configured Drop Mover copy (until phase 4)
 ```
 
 - Built with plain `swiftc` from the Command Line Tools. XCTest is not available there, so the
-  tests are a small executable with `check`/`eq` helpers. Keep logic that needs tests in
-  `Renamer.swift` / `Config.swift` (Foundation only), not in `main.swift`.
+  tests are a small executable with `check`/`eq` helpers. Logic that needs tests goes into
+  `Sources/Core` (Foundation only), not into the app sources. New test function: add it to `Tests/main.swift`.
+- SourceKit in the editor reports "Cannot find X in scope" across files because there is no
+  project; only `./build.sh` output counts.
 - Host architecture only: the Command Line Tools lack the x86_64 Swift compatibility libraries.
 - UI changes cannot be verified with `screencapture` from a terminal without Screen Recording
   permission. Check window presence with `CGWindowListCopyWindowInfo` and do a manual test.
 
 ## Design rules
 
-- **Per-copy state lives in the bundle** (`Contents/Resources/config.json`, Finder icon file
-  `Icon\r`). Do not use `UserDefaults`, Application Support or notifications keyed by bundle id:
-  all copies share the bundle id `io.schaedler.dropmover`.
-- **No bundle code signature**, because the app writes into its own bundle (see build.sh).
-- The toast is a custom non-activating `NSPanel`, not `UNUserNotificationCenter` (no permission
-  prompt, works for every copy, clickable).
-- Fail loudly: corrupt config, missing target and save errors show an alert; per-item move errors
-  show in a red toast and are logged via `NSLog` (prefix `DropMover:`).
-- Keep the token list in `Renamer.swift`, the README table and the check in
-  `scripts/install-copy.sh` in sync. The same applies to the default pattern.
+- **Drop Mover keeps per-copy state in its bundle** (`Contents/Resources/config.json`, Finder icon
+  file `Icon\r`). No `UserDefaults` or Application Support there: all copies share one bundle id.
+  Its bundle stays unsigned because it writes into itself (see build.sh).
+- **Drop Sorter is a single instance**: config and history in
+  `~/Library/Application Support/li.sudo.dropsorter/`, bundle id `li.sudo.dropsorter`, signed with a
+  stable identity so TCC grants survive rebuilds. Generated Drop Mover apps get `li.sudo.dropmover`
+  (phase 4; today's copies still carry `io.schaedler.dropmover`).
+- The matcher is pure (no file system access): `FolderIndex` lists folders, `Matcher` scores them.
+  A folder is only preselected when the match is clear; a blind Return must never misfile.
+- `Mover` never overwrites (`-2`, `-3` suffixes), moves item by item and reports per-item failures;
+  `Mover.undo` reverses a result.
+- Fail loudly: corrupt config or history files throw instead of being reset; `SorterConfig.validate()`
+  at startup and before saving; errors are logged via `NSLog` with the prefix in `Mover.logPrefix`.
+- Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
+- Keep the token list in `Renamer.swift`, the table in docs/DROP-MOVER.md and the check in
+  `scripts/install-copy.sh` in sync. The same applies to the default pattern. Keep the scoring
+  table in README.md in sync with `Matcher.score`.
 
 ## Task tracking
 
