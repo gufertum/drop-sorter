@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the unit tests, then builds "build/suggest", "build/Drop Mover.app" and "build/Drop Sorter.app".
+# Runs the unit tests, then builds "build/dropsorter" (CLI), "build/Drop Mover.app" and "build/Drop Sorter.app".
 # Usage: ./build.sh
 # Drop Sorter is signed with a stable identity when one exists, so macOS privacy grants (e.g. access
 # to a base folder in ~/Documents) survive rebuilds: DROPSORTER_SIGN_ID, else "Drop Sorter Local" (created by
@@ -19,8 +19,8 @@ echo "==> tests"
 "${SWIFTC[@]}" "${CORE[@]}" Tests/*.swift -o "$BUILD/obj/tests"
 "$BUILD/obj/tests"
 
-echo "==> suggest tool"
-"${SWIFTC[@]}" "${CORE[@]}" Tools/suggest/main.swift -o "$BUILD/suggest"
+echo "==> dropsorter (command line)"
+"${SWIFTC[@]}" -target "$(uname -m)-apple-macos$MIN_OS" "${CORE[@]}" Sources/CLI/main.swift -o "$BUILD/dropsorter"
 
 echo "==> icon"
 "${SWIFTC[@]}" Sources/DropMover/IconRenderer.swift Tools/make-icon/main.swift -o "$BUILD/obj/make-icon"
@@ -53,6 +53,8 @@ iconutil -c icns "$BUILD/obj/SorterIcon.iconset" -o "$SORTER/Contents/Resources/
 cp Resources/DropSorter/Info.plist "$SORTER/Contents/Info.plist"
 # Template for generated Drop Mover apps. No .app extension, so Launch Services does not register it.
 cp -R "$APP" "$SORTER/Contents/Resources/DropMoverTemplate"
+# The command line tool ships inside the app; Settings links it into ~/.local/bin.
+cp "$BUILD/dropsorter" "$SORTER/Contents/MacOS/dropsorter"
 printf 'APPL????' > "$SORTER/Contents/PkgInfo"
 # Drop Sorter keeps its state in Application Support, so its bundle can be sealed.
 SIGN_ID="${DROPSORTER_SIGN_ID:-}"

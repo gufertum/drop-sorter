@@ -16,6 +16,7 @@ let suites: [(String, () throws -> Void)] = [
     ("ChooserModel", chooserModelTests),
     ("Sorter", sorterTests),
     ("DropApps", dropAppTests),
+    ("CLI", cliTests),
 ]
 for (name, run) in suites {
     do { try run() } catch { failures += 1; print("FAIL \(name): unexpected error \(error)") }

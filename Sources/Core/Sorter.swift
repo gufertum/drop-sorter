@@ -2,8 +2,8 @@ import Foundation
 
 /// One drop sorted into one target folder: the move result plus what Undo needs.
 struct SortOutcome {
-    /// Tells drops apart, so an Undo button of an older toast cannot undo a newer drop.
-    let id = UUID()
+    /// Tells operations apart, so an Undo button of an older toast cannot undo a newer drop.
+    var id = UUID()
     let folder: String
     let target: URL
     var result: MoveResult
