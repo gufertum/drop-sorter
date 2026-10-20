@@ -12,6 +12,8 @@ enum Tokenizer {
     /// Precomposed (APFS hands out decomposed names), lowercased, German umlauts spelled out,
     /// other diacritics removed: "Steuererklärung" -> "steuererklaerung", "Café" -> "cafe".
     static func fold(_ s: String) -> String {
+        // Most names are plain ASCII: nothing to precompose, spell out or strip.
+        if s.utf8.allSatisfy({ $0 < 128 }) { return s.lowercased() }
         var t = s.precomposedStringWithCanonicalMapping.lowercased()
         for (umlaut, spelled) in [("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")] {
             t = t.replacingOccurrences(of: umlaut, with: spelled)

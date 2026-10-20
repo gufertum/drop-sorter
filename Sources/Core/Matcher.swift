@@ -2,18 +2,44 @@ import Foundation
 
 /// One possible target: a folder relative to the base folder, "/"-separated, e.g. "30 Areas/Finance/Invoices".
 struct FolderEntry: Equatable {
+    /// How many files of one kind a folder holds, and one of them to show as an example.
+    struct Sample: Equatable {
+        var count: Int
+        let example: String
+    }
+
     let path: String
     let leafTokens: [String]
     let parentTokens: [String]
     /// Folded path with a trailing "/", what the filter matches against.
     let normalized: String
+    /// Names of the files directly in the folder, as far as the index collected them.
+    let files: [String]
+    /// Name shape (see NameShape) -> files of that shape.
+    let shapes: [String: Sample]
+    /// "word.ext" -> files with that significant word and extension.
+    let fileWords: [String: Sample]
 
-    init(path: String) {
+    init(path: String, files: [String] = []) {
         self.path = path
         let segments = path.split(separator: "/").map(String.init)
         leafTokens = Tokenizer.tokens(segments.last ?? "")
         parentTokens = Tokenizer.tokens(segments.dropLast().joined(separator: " "))
         normalized = Tokenizer.fold(path) + "/"
+        self.files = files
+        var shapes: [String: Sample] = [:]
+        var words: [String: Sample] = [:]
+        for name in files {
+            if let shape = NameShape.of(name, isDirectory: false) {
+                shapes[shape, default: Sample(count: 0, example: name)].count += 1
+            }
+            let (base, ext) = Tokenizer.baseAndExtension(name, isDirectory: false)
+            for t in Tokenizer.tokens(base) where !Tokenizer.isYear(t) && !NameShape.monthNames.contains(t) {
+                words[t + "." + ext, default: Sample(count: 0, example: name)].count += 1
+            }
+        }
+        self.shapes = shapes
+        fileWords = words
     }
 }
 
@@ -84,6 +110,20 @@ enum Matcher {
                 points += 2; why.append("“\(t)” alias")
             } else if f.parentTokens.contains(where: { $0 == t || Tokenizer.prefixMatch(t, $0) }) {
                 points += 1; why.append("“\(t)” ≈ parent")
+            }
+        }
+        // Files already in the folder that are named like this one: the strongest hint there is.
+        if let shape = NameShape.of(item.name, isDirectory: item.isDirectory), let s = f.shapes[shape] {
+            points += 4 + Double(min(s.count - 1, 2))
+            why.append("\(s.count) file\(s.count == 1 ? "" : "s") like “\(s.example)”")
+        } else {
+            // Otherwise files sharing a significant word (same extension); the best word counts once.
+            let best = tokens.filter { !Tokenizer.isYear($0) && !NameShape.monthNames.contains($0) }
+                .compactMap { t in f.fileWords[t + "." + ext].map { (t, $0) } }
+                .max { $0.1.count < $1.1.count }
+            if let (word, s) = best {
+                points += s.count >= 3 ? 2 : 1
+                why.append("\(s.count) file\(s.count == 1 ? "" : "s") with “\(word)”, e.g. “\(s.example)”")
             }
         }
         if !ext.isEmpty, rules.extensions[ext] == f.path {

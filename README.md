@@ -159,10 +159,13 @@ removed. Each word is compared with each folder:
 | Word matches the folder name by prefix (5+ shared letters, 75 % of the shorter word) | +2 |
 | Word matches an alias of the folder | +2 |
 | Word matches a parent folder | +1 |
+| The folder already has files of the same name shape and extension (`Januar_Statement.pdf` for `Dezember_Statement.pdf`: months, numbers and dates are placeholders) | +4, +5 for 2 files, +6 for 3 or more |
+| Otherwise: files in the folder share a significant word and the extension | +1, +2 for 3 or more files |
 | Extension rule points to the folder | +3 |
 | Word was moved to the folder before | +1 per time, at most +4 |
 
-With several items the scores are averaged. A folder is preselected only when it scores at least
+The folder index lists up to 300 file names per folder for the name-shape signal (100,000 files in
+5,500 folders: about 1.2 s; typical folders: a few hundredths). With several items the scores are averaged. A folder is preselected only when it scores at least
 `suggest.minScore` (3) and leads the next one by `suggest.minMargin` (1); otherwise Return does nothing
 until a folder is picked. After typing, each space-separated term must appear in the path as one piece
 (`embr` finds `Cembra`, nothing else); matches at the start of a word rank first.
