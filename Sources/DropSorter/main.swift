@@ -64,6 +64,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.start()
         finishedLaunching = true
         updateShelf()
+        // Let the slide-in finish, then draw the eye to the shelf.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.shelf.pulse() }
+        // First run: no configuration file yet. Settings explains the shelf and asks for the base folder.
+        if configStore.activeURL == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.showSettings(welcome: true) }
+        }
         if !pendingOpen.isEmpty {
             beginSort(pendingOpen)
             pendingOpen = []
@@ -75,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         pinned = true
         updateShelf()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.shelf.pulse() }
         return false
     }
 
@@ -352,7 +359,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                    actions: openConfig ? [.init(title: "Open Configuration") { [weak self] in self?.openConfig() }] : [])
     }
 
-    @objc private func showSettings() {
+    @objc private func showSettings() { showSettings(welcome: false) }
+
+    private func showSettings(welcome: Bool) {
         if settings == nil {
             let s = SettingsWindow(config: config, configPath: (configStore.activeURL ?? configStore.yamlURL).path,
                                    historyWords: historyWords, dropApps: dropAppManager,
@@ -368,7 +377,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings = s
         }
         reloadConfigIfChanged()
-        settings?.show()
+        settings?.show(welcome: welcome)
     }
 
     /// Returns an error text for the Settings window, nil when saved.
@@ -424,7 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         m.addItem(withTitle: "Undo Last Drop", action: #selector(undoLastDrop), keyEquivalent: "").target = self
         m.addItem(.separator())
-        m.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: "").target = self
+        m.addItem(withTitle: "Settings…", action: #selector(showSettings as () -> Void), keyEquivalent: "").target = self
         m.addItem(withTitle: "Open Configuration File", action: #selector(openConfig), keyEquivalent: "").target = self
         m.addItem(.separator())
         m.addItem(withTitle: "Quit Drop Sorter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
@@ -436,7 +445,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         appItem.submenu = NSMenu()
-        appItem.submenu?.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
+        appItem.submenu?.addItem(withTitle: "Settings…", action: #selector(showSettings as () -> Void), keyEquivalent: ",").target = self
         appItem.submenu?.addItem(withTitle: "Quit Drop Sorter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         main.addItem(appItem)
         let windowItem = NSMenuItem()

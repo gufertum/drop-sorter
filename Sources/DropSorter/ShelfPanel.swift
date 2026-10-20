@@ -18,6 +18,7 @@ final class ShelfPanel: NSPanel {
     private let settingsButton = NSButton()
     private let pinLabel = NSTextField(labelWithString: "pinned")
     private var visibleGeneration = 0
+    private weak var frameView: NSView?
     private(set) var isShown = false
 
     init(menu: NSMenu) {
@@ -36,6 +37,9 @@ final class ShelfPanel: NSPanel {
         content.wantsLayer = true
         content.layer?.cornerRadius = 14
         content.layer?.masksToBounds = true
+        // An accent frame, so the shelf stands out on dark backgrounds too.
+        content.layer?.borderWidth = 1.5
+        frameView = content
         content.menu = menu
 
         let title = NSTextField(labelWithString: "Drop Sorter")
@@ -141,7 +145,27 @@ final class ShelfPanel: NSPanel {
                       width: size.width, height: size.height)
     }
 
+    /// Draws attention: the frame flashes in the accent colour a few times (first start, relaunch).
+    func pulse() {
+        guard let layer = frameView?.layer else { return }
+        layer.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
+        let width = CABasicAnimation(keyPath: "borderWidth")
+        width.fromValue = 1.5
+        width.toValue = 5
+        let color = CABasicAnimation(keyPath: "borderColor")
+        color.toValue = NSColor.controlAccentColor.cgColor
+        let group = CAAnimationGroup()
+        group.animations = [width, color]
+        group.duration = 0.45
+        group.autoreverses = true
+        group.repeatCount = 3
+        group.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(group, forKey: "pulse")
+    }
+
     func slideIn() {
+        // The accent colour can change in System Settings; take the current one.
+        frameView?.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
         guard !isShown else { return }
         isShown = true
         visibleGeneration += 1
@@ -192,7 +216,7 @@ final class DropSpot: NSView {
         registerForDraggedTypes([.fileURL])
         let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!)
         icon.symbolConfiguration = .init(pointSize: compact ? 11 : 30, weight: compact ? .regular : .light)
-        icon.contentTintColor = compact ? .systemYellow : .secondaryLabelColor
+        icon.contentTintColor = compact ? .systemYellow : .controlAccentColor
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 11, weight: compact ? .medium : .regular)
         label.textColor = compact ? .labelColor : .secondaryLabelColor
@@ -221,7 +245,8 @@ final class DropSpot: NSView {
             NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
             path.fill()
         }
-        (highlighted ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor).setStroke()
+        (highlighted ? NSColor.controlAccentColor
+            : compact ? NSColor.tertiaryLabelColor : NSColor.controlAccentColor.withAlphaComponent(0.7)).setStroke()
         path.lineWidth = 1.5
         if !compact { path.setLineDash([5, 4], count: 2, phase: 0) }
         path.stroke()
