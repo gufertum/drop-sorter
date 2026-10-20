@@ -27,7 +27,7 @@ Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
 Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, Apple Silicon.
 
 ```bash
-./build.sh      # unit tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
+./build.sh      # unit tests, build/dropsorter, build/Drop Mover.app, build/Drop Sorter.app
 open "build/Drop Sorter.app"
 ```
 
@@ -67,18 +67,33 @@ scripts/make-signing-identity.sh      # "Drop Sorter Local" in your login keycha
 
 The first `codesign` run may ask for keychain access: choose "Always Allow".
 
-## Try the suggestions
+## Command line
 
-`build/suggest` runs the matcher against a real folder tree, without the app:
+`dropsorter` uses the same engine, configuration, history and undo as the app, and works without the
+app running. Settings › General › **Install Command Line Tool** links it into `~/.local/bin`; or:
 
 ```bash
-build/suggest ~/Documents/Files "Rechnung_Swisscom_2026-09.pdf" "invoice-hetzner.pdf"
-build/suggest -q "fin inv" ~/Documents/Files "scan.pdf"          # what the chooser shows after typing
-build/suggest -c config.yaml ~/Documents/Files "old-notes/"       # trailing "/" = folder
+ln -sf "/Applications/Drop Sorter.app/Contents/MacOS/dropsorter" ~/.local/bin/dropsorter
 ```
 
-It prints the preselected folder (or `none` when the match is not clear) and the top 8 folders with
-their score and the reasons.
+```bash
+dropsorter folders -q "fin inv"                          # target folders, filtered like the chooser
+dropsorter suggest ~/Downloads/Rechnung_Swisscom.pdf     # suggestion with score and reasons
+dropsorter move --auto ~/Downloads/invoice-hetzner.pdf   # only if the suggestion is clear (else exit 4)
+dropsorter copy --to "80 Backup" ~/Desktop/contract.pdf  # explicit folder, copy
+dropsorter move --dry-run --to "90 Archive" ~/Downloads/*.pdf
+dropsorter undo                                          # the most recent operation, once
+dropsorter last --json                                   # what undo would revert
+```
+
+Every command takes `--json`; errors then come as `{"error": {"code": …, "message": …}}`. Exit status:
+0 ok, 1 some items failed, 2 usage or input, 3 configuration, 4 no clear suggestion, 5 nothing to
+undo. Folders are relative to the base folder and must be real targets (no hidden, excluded or
+outside folders). Set `DROPSORTER_LOG=1` to see the engine's log lines.
+
+**Undo** covers only the most recent operation, whoever made it (drop, CLI, MCP or REST), once. An
+operation that changed nothing keeps the previous one undoable. Undo of a copy moves the copies to the
+Trash.
 
 ## How a folder is suggested
 

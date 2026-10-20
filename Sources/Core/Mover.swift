@@ -1,6 +1,6 @@
 import Foundation
 
-struct Move: Equatable {
+struct Move: Codable, Equatable {
     let source: URL
     let destination: URL
 }

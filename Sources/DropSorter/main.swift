@@ -7,9 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("li.sudo.dropsorter", isDirectory: true)
     private lazy var configStore = SorterConfigStore(directory: supportDirectory)
-    private lazy var historyStore = JSONStore(url: supportDirectory.appendingPathComponent("history.json"), defaultValue: History())
+    /// Same engine as the CLI, MCP and REST: history and the undo journal are shared through it.
+    private lazy var service = SortService(home: supportDirectory, template: dropAppManager.template)
     private var config = SorterConfig()
-    private var history = History()
 
     private let watcher = FrontmostWatcher()
     private lazy var shelf = ShelfPanel(menu: buildMenu(includeShowShelf: false))
@@ -24,8 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previousApp: NSRunningApplication?
     private var pendingOpen: [URL] = []
     private var finishedLaunching = false
-    /// The most recent drop that changed something; the only one that can be undone.
-    private var lastOutcome: SortOutcome?
     private var menuBar: MenuBarItem?
     private let dropAppManager = DropAppManager()
     private var settings: SettingsWindow?
@@ -41,7 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Fail loudly: a broken config or history is reported and never overwritten.
         do {
             config = try configStore.load()
-            history = try historyStore.load()
+            _ = try service.history()
+            _ = try service.lastOperation()
         } catch {
             fatal("Drop Sorter cannot start", "\(error.localizedDescription)\n\nFix or remove the file, then start Drop Sorter again.")
         }
@@ -97,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.remove()
             menuBar = nil
         }
-        settings?.update(config: config, historyWords: history.counts.count)
+        settings?.update(config: config, historyWords: historyWords)
     }
 
     /// Re-reads the config file when it changed on disk (edited by hand), so no restart is needed.
@@ -169,7 +168,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showError("Cannot read the base folder", [error.localizedDescription], openConfig: true)
             return
         }
-        history.prune(keeping: Set(folders.map(\.path)))
+        let history: History
+        do { history = try service.history() } catch {
+            showError("Cannot read the history", [error.localizedDescription], openConfig: false)
+            return
+        }
         let items = Sorter.dropItems(urls)
         let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
         let model = ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoritePaths))
@@ -195,8 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyConfig()
             return
         }
-        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, mode: mode, history: &history)
-        finish(outcome)
+        perform(urls, into: folder, mode: mode)
     }
 
     private func finishSort(_ urls: [URL], into folder: String?, base: URL, mode: TransferMode) {
@@ -207,80 +209,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Esc: nothing at all happens to the files.
         guard let folder else { return }
 
-        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, mode: mode, history: &history)
-        finish(outcome)
+        perform(urls, into: folder, mode: mode)
     }
 
-    /// Saves the history, remembers the drop for "Undo Last Drop" (also when some items failed) and
-    /// shows the toast.
-    private func finish(_ outcome: SortOutcome) {
-        let saveError = saveHistory()
-        // A drop that changed nothing keeps the previous one undoable.
-        if !outcome.result.moves.isEmpty { lastOutcome = outcome }
-        showResult(outcome, extraErrors: saveError.map { ["history not saved: \($0)"] } ?? [])
+    /// Moves or copies through the shared engine, which also records history and the undo journal.
+    private func perform(_ urls: [URL], into folder: String, mode: TransferMode) {
+        do {
+            showResult(try service.perform(urls, into: folder, mode: mode, source: "app"))
+        } catch {
+            showError("\(mode == .copy ? "Copy" : "Move") failed", [error.localizedDescription], openConfig: false)
+        }
     }
 
-    /// Only the most recent drop can be undone, once.
-    @objc private func undoLastDrop() {
-        guard let outcome = lastOutcome else { return }
-        undo(outcome)
-    }
+    /// Only the most recent operation (a drop, or a CLI/API call) can be undone, once.
+    @objc private func undoLastDrop() { undo(id: nil) }
 
-    private func undo(_ outcome: SortOutcome) {
-        // Another drop since then, or already undone: never undo an older drop.
-        guard let last = lastOutcome, last.id == outcome.id else {
-            toast.show(title: "Nothing to undo", lines: ["Only the most recent drop can be undone, once."], isError: false, actions: [])
+    /// With an `id` (the toast's Undo button), only if that drop is still the most recent operation.
+    private func undo(id: UUID?) {
+        let back: UndoReport
+        do {
+            back = try service.undo(id: id?.uuidString)
+        } catch let e as ServiceError where e == .nothingToUndo || e == .staleUndo {
+            toast.show(title: "Nothing to undo", lines: ["Only the most recent operation can be undone, once."], isError: false, actions: [])
+            return
+        } catch {
+            showError("Undo failed", [error.localizedDescription], openConfig: false)
             return
         }
-        lastOutcome = nil
-        let back = Sorter.undo(outcome, history: &history)
-        let saveError = saveHistory()
-        var lines = back.moved.prefix(6).map { "← " + $0.path.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
-        if back.moved.count > 6 { lines.append("… and \(back.moved.count - 6) more") }
-        lines += back.failures.map { "✗ \($0.name): \($0.reason)" }
-        if let saveError { lines.append("✗ history not saved: \(saveError)") }
-        let failed = !back.failures.isEmpty || saveError != nil
-        let done = outcome.result.mode == .copy ? "Moved \(plural(back.moved.count)) of the copies to the Trash"
-                                                : "Moved \(plural(back.moved.count)) back"
-        if outcome.result.mode == .copy {
-            lines = back.moves.prefix(6).map { "✕ " + $0.source.lastPathComponent }
-            if back.moves.count > 6 { lines.append("… and \(back.moves.count - 6) more") }
-            lines += back.failures.map { "✗ \($0.name): \($0.reason)" }
-        }
-        toast.show(title: failed ? "Undo incomplete" : done,
-                   lines: lines, isError: failed,
-                   actions: back.moved.isEmpty || outcome.result.mode == .copy ? [] : [.init(title: "Reveal") {
-                       NSWorkspace.shared.activateFileViewerSelecting(back.moved)
+        let short = { (p: String) in p.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
+        var lines = back.items.prefix(6).map { back.mode == .copy ? "✕ " + ($0.from as NSString).lastPathComponent : "← " + short($0.to) }
+        if back.items.count > 6 { lines.append("… and \(back.items.count - 6) more") }
+        lines += back.failed.map { "✗ \($0.name): \($0.reason)" }
+        let failed = !back.failed.isEmpty
+        let done = back.mode == .copy ? "Moved \(plural(back.items.count)) of the copies to the Trash" : "Moved \(plural(back.items.count)) back"
+        let restored = back.items.map { URL(fileURLWithPath: $0.to) }
+        toast.show(title: failed ? "Undo incomplete" : done, lines: lines, isError: failed,
+                   actions: restored.isEmpty || back.mode == .copy ? [] : [.init(title: "Reveal") {
+                       NSWorkspace.shared.activateFileViewerSelecting(restored)
                    }])
     }
 
-    private func showResult(_ o: SortOutcome, extraErrors: [String]) {
+    private func showResult(_ o: SortOutcome) {
         let r = o.result
         var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
         if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
-        lines += extraErrors.map { "✗ " + $0 }
-        let failed = !r.failures.isEmpty || !extraErrors.isEmpty
+        let failed = !r.failures.isEmpty
         let title = r.failures.isEmpty
             ? "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.folder)"
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
         var actions: [SortToast.Action] = []
         if !r.moves.isEmpty {
-            actions.append(.init(title: "Undo") { [weak self] in self?.undo(o) })
+            actions.append(.init(title: "Undo") { [weak self] in self?.undo(id: o.id) })
             actions.append(.init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(r.moved) })
         }
         toast.show(title: title, lines: lines, isError: failed, actions: actions)
     }
 
-    private func saveHistory() -> String? {
-        do {
-            try historyStore.save(history)
-            return nil
-        } catch {
-            NSLog("DropSorter: cannot save history '%@': %@", historyStore.url.path, error.localizedDescription)
-            return error.localizedDescription
-        }
-    }
+    private var historyWords: Int { (try? service.history().counts.count) ?? 0 }
 
     /// No base folder yet. Without a config file, ask for the folder and create config.yaml. With a
     /// hand-written file, do not rewrite it (comments would be lost): point the user to it instead.
@@ -319,13 +305,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         if settings == nil {
             let s = SettingsWindow(config: config, configPath: (configStore.activeURL ?? configStore.yamlURL).path,
-                                   historyWords: history.counts.count, dropApps: dropAppManager)
+                                   historyWords: historyWords, dropApps: dropAppManager)
             s.onChange = { [weak self] updated in self?.saveFromSettings(updated) }
             s.onForgetHistory = { [weak self] in
                 guard let self else { return 0 }
-                self.history = History()
-                if let error = self.saveHistory() { self.showError("History not saved", [error], openConfig: false) }
-                return 0
+                do { try self.service.clearHistory() } catch {
+                    self.showError("History not cleared", [error.localizedDescription], openConfig: false)
+                }
+                return self.historyWords
             }
             settings = s
         }
@@ -424,8 +411,9 @@ extension AppDelegate: NSMenuItemValidation {
     /// "Undo Last Drop" says what it would undo, and is disabled when there is nothing.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard item.action == #selector(undoLastDrop) else { return true }
-        if let last = lastOutcome {
-            item.title = "Undo Last Drop: \(last.result.mode.pastTense) \(last.result.moves.count) to \(last.folder)"
+        if let last = try? service.lastOperation() {
+            item.title = "Undo Last Drop: \(last.mode.pastTense) \(last.moves.count) to \(last.folder)"
+                + (last.source == "app" ? "" : " (via \(last.source))")
             return true
         }
         item.title = "Undo Last Drop"

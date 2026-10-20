@@ -25,6 +25,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
     private let loginCheck = NSButton(checkboxWithTitle: "Open Drop Sorter at login", target: nil, action: nil)
     private let loginNote = NSTextField(labelWithString: "")
     private let historyLabel = NSTextField(labelWithString: "")
+    private let cliLabel = NSTextField(labelWithString: "")
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
     private let dropTable = NSTableView()
     private let dropApps: DropAppManager
@@ -137,6 +138,9 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         loginNote.font = .systemFont(ofSize: 11)
         loginNote.textColor = .secondaryLabelColor
         let historyRow = NSStackView(views: [historyLabel, button("Forget…", #selector(forgetHistory))])
+        cliLabel.font = .systemFont(ofSize: 11)
+        cliLabel.textColor = .secondaryLabelColor
+        let cliRow = NSStackView(views: [button("Install Command Line Tool", #selector(installCLI)), cliLabel])
 
         errorLabel.textColor = .systemRed
         errorLabel.font = .systemFont(ofSize: 11)
@@ -174,7 +178,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             heading("Rename rules"), ruleScroll, ruleButtons,
             small("Items moved into a folder with a rule are renamed; with Subfolders on, also in its subfolders. The most specific rule wins. Double-click a pattern to edit it. Tokens: " + Renamer.tokenHelp + ". {original} keeps the name, e.g. for a subfolder of a renamed folder."),
             heading("Shelf"), desktopCheck, delayRow,
-            heading("General"), menuBarCheck, loginCheck, loginNote, historyRow,
+            heading("General"), menuBarCheck, loginCheck, loginNote, historyRow, cliRow,
         ]
         let favorites: [NSView] = [
             heading("Favorites"), favScroll, favoriteButtons,
@@ -242,6 +246,8 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         dropTable.reloadData()
         let pending = dropInfos.filter(\.needsUpdate).count
         dropNote.stringValue = pending == 0 ? "" : "\(pending) app\(pending == 1 ? "" : "s") can be updated or adopted."
+        cliLabel.stringValue = Self.cliLink.map { "dropsorter → \($0.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" }
+            ?? "Links dropsorter into ~/.local/bin"
         historyLabel.stringValue = "Learned from earlier moves: \(historyWords) word\(historyWords == 1 ? "" : "s")"
     }
 
@@ -409,6 +415,37 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         a.addButton(withTitle: "Cancel")
         guard a.runModal() == .alertFirstButtonReturn else { return }
         historyWords = onForgetHistory?() ?? historyWords
+        refresh()
+    }
+
+    // MARK: Command line tool
+
+    static let cliLinkURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin/dropsorter")
+
+    /// Where ~/.local/bin/dropsorter points, if it is a link.
+    static var cliLink: URL? {
+        (try? FileManager.default.destinationOfSymbolicLink(atPath: cliLinkURL.path)).map { URL(fileURLWithPath: $0) }
+    }
+
+    /// Links (or relinks) ~/.local/bin/dropsorter to the tool inside this app. Never replaces a real file.
+    @objc private func installCLI() {
+        let fm = FileManager.default
+        let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/dropsorter")
+        let link = Self.cliLinkURL
+        do {
+            try fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if Self.cliLink != nil {
+                try fm.removeItem(at: link)
+            } else if fm.fileExists(atPath: link.path) {
+                errorLabel.stringValue = "\(link.path) exists and is not a link; remove it first."
+                return
+            }
+            try fm.createSymbolicLink(at: link, withDestinationURL: tool)
+            let inPath = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").contains { $0 == link.deletingLastPathComponent().path }
+            errorLabel.stringValue = inPath ? "" : "Installed. Add ~/.local/bin to your PATH to run dropsorter by name."
+        } catch {
+            errorLabel.stringValue = "Command line tool not installed: \(error.localizedDescription)"
+        }
         refresh()
     }
 

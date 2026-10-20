@@ -12,19 +12,20 @@ Original concept (written for an Obsidian vault, before the app became general p
 
 - `Sources/Core/` Foundation only, shared by both apps and the tests: Renamer, Mover, Tokenizer,
   Matcher, FolderIndex, History, JSONStore, SorterConfig, SorterConfigStore, YAML, DropMoverConfig,
-  ShelfVisibility, ChooserModel, Sorter, ShelfLabels.
+  ShelfVisibility, ChooserModel, Sorter, ShelfLabels, SortService, Journal, FileLock, CLI.
 - `Sources/DropMover/` Drop Mover app (AppKit). `Resources/DropMover/Info.plist`.
 - `Sources/DropSorter/` Drop Sorter agent app: FrontmostWatcher, ShelfPanel (main and favorite spots),
   ChooserPanel, SortToast, SettingsWindow, MenuBarItem, main.
   `Resources/DropSorter/Info.plist` (`LSUIElement`). `DROPSORTER_HOME=<dir>` replaces the Application Support
   folder, for manual tests with a sample base folder: `open -n --env DROPSORTER_HOME=<dir> "build/Drop Sorter.app"`.
 - `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
-- `Tools/` make-icon (iconset), suggest (matcher CLI).
+- `Sources/CLI/` the `dropsorter` binary (thin: `CLI.swift` in Core parses and runs the commands).
+- `Tools/` make-icon (iconset).
 
 ## Build and test
 
 ```bash
-./build.sh      # tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
+./build.sh      # tests, build/dropsorter, build/Drop Mover.app, build/Drop Sorter.app
 scripts/make-signing-identity.sh   # once: stable signing identity, picked up by build.sh
 ```
 
@@ -50,6 +51,9 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
   `Contents/Resources/DropMoverTemplate` (no `.app`, so Launch Services ignores it). A copy is current
   when its executable equals the template's byte for byte; update replaces the bundle, keeps
   `config.json`, trashes the old bundle and puts it back if the swap fails. Tests use a fake trash.
+- **One engine**: `SortService` serves the app, the CLI, MCP and REST. It re-reads the config per call,
+  updates history and the undo journal (`journal.json`, only the last operation) under `FileLock`,
+  and never changes the configuration. New sort/undo behaviour goes there, not into a front end.
 - The base folder is rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
   watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
 - The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
