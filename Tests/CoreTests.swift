@@ -141,6 +141,8 @@ func sorterConfigTests() throws {
     // Every key is optional.
     let empty = try JSONDecoder().decode(SorterConfig.self, from: Data("{}".utf8))
     eq(empty, SorterConfig())
+    eq(empty.menuBarIcon, true)
+    eq(try JSONDecoder().decode(SorterConfig.self, from: Data(#"{"menuBarIcon": false}"#.utf8)).menuBarIcon, false)
     try empty.validate()
 
     let json = """
