@@ -7,6 +7,7 @@ copy has its own target folder and rename pattern.
 ## Features
 
 - **Drop** files or folders onto the app icon (Finder, Dock) or onto the drop zone in its window.
+- **Copy** instead of move, if the copy is set up that way (e.g. a backup drop target).
 - **Rename** with a configurable pattern, default `{date}_{time}_{name}{ext}` →
   `2026-10-10_14-03-22_invoice.pdf`.
 - **Folders** are moved with their content. Only the top-level folder is renamed.
@@ -61,8 +62,10 @@ All items of one drop share the same timestamp. A pattern must not produce `/`.
 Stored per copy in `<copy>.app/Contents/Resources/config.json`:
 
 ```json
-{"pattern":"{date}_{time}_{name}{ext}","target":"/Users/me/Documents/Archive/Invoices"}
+{"mode":"move","pattern":"{date}_{time}_{name}{ext}","target":"/Users/me/Documents/Archive/Invoices"}
 ```
+
+- `mode`: `move` (default) or `copy` (the originals stay; "Copy instead of move" in the window).
 
 - A copy of a configured app starts with the same settings. Change them in its window.
 - The app bundle must be writable. Do not put copies where your user cannot write, such as

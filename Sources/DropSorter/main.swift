@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previousApp: NSRunningApplication?
     private var pendingOpen: [URL] = []
     private var finishedLaunching = false
+    /// The most recent drop that changed something; the only one that can be undone.
+    private var lastOutcome: SortOutcome?
     private var menuBar: MenuBarItem?
     private let dropAppManager = DropAppManager()
     private var settings: SettingsWindow?
@@ -45,8 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         configDate = configStore.modificationDate
         applyConfig()
-        shelf.onDrop = { [weak self] in self?.beginSort($0) }
-        shelf.onDropFavorite = { [weak self] folder, urls in self?.sortIntoFavorite(urls, folder) }
+        shelf.onDrop = { [weak self] urls, mode in self?.beginSort(urls, mode: mode) }
+        shelf.onDropFavorite = { [weak self] fav, urls, mode in self?.sortIntoFavorite(urls, fav.folder, mode: mode) }
         shelf.onSettings = { [weak self] in self?.showSettings() }
         shelf.onDragOver = { [weak self] over in
             self?.dragOver = over
@@ -85,12 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         visibility.ownBundleID = Bundle.main.bundleIdentifier ?? visibility.ownBundleID
         watcher.watchFinderWindows = !config.shelf.showOnDesktop
         let missing = config.baseURL.map { base in
-            Set(config.favorites.filter { !FileManager.default.fileExists(atPath: base.appendingPathComponent($0).path) })
-        } ?? Set(config.favorites)
+            Set(config.favoritePaths.filter { !FileManager.default.fileExists(atPath: base.appendingPathComponent($0).path) })
+        } ?? Set(config.favoritePaths)
         shelf.setFavorites(config.favorites, missing: missing)
         if config.menuBarIcon && menuBar == nil {
             menuBar = MenuBarItem(menu: buildMenu(includeShowShelf: true))
-            menuBar?.onDrop = { [weak self] in self?.beginSort($0) }
+            menuBar?.onDrop = { [weak self] urls, mode in self?.beginSort(urls, mode: mode) }
         } else if !config.menuBarIcon, let item = menuBar {
             item.remove()
             menuBar = nil
@@ -155,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Sorting
 
-    private func beginSort(_ urls: [URL]) {
+    private func beginSort(_ urls: [URL], mode: TransferMode = .move) {
         guard chooser == nil, !urls.isEmpty else { return }
         guard reloadConfigIfChanged() else { return }
         guard let base = config.baseURL else { return askForBase(then: urls) }
@@ -170,21 +172,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history.prune(keeping: Set(folders.map(\.path)))
         let items = Sorter.dropItems(urls)
         let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
-        let model = ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favorites))
+        let model = ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoritePaths))
 
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
         let config = self.config
-        let panel = ChooserPanel(model: model) { config.renamePattern(forTarget: $0) }
-        panel.onFinish = { [weak self] path in self?.finishSort(urls, into: path, base: base) }
+        let panel = ChooserPanel(model: model, mode: mode) { config.renamePattern(forTarget: $0) }
+        panel.onFinish = { [weak self] path in self?.finishSort(urls, into: path, base: base, mode: mode) }
         chooser = panel
         updateShelf()
         NSApp.activate(ignoringOtherApps: true)
         panel.present()
     }
 
-    /// Drop on a favorite spot: moves at once, the toast offers Undo.
-    private func sortIntoFavorite(_ urls: [URL], _ folder: String) {
+    /// Drop on a favorite spot: moves (or copies) at once, the toast offers Undo.
+    private func sortIntoFavorite(_ urls: [URL], _ folder: String, mode: TransferMode) {
         guard chooser == nil, reloadConfigIfChanged() else { return }
         guard let base = config.baseURL else { return askForBase(then: urls) }
         var isDir: ObjCBool = false
@@ -193,12 +195,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyConfig()
             return
         }
-        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, history: &history)
-        let saveError = saveHistory()
-        showResult(outcome, extraErrors: saveError.map { ["history not saved: \($0)"] } ?? [])
+        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, mode: mode, history: &history)
+        finish(outcome)
     }
 
-    private func finishSort(_ urls: [URL], into folder: String?, base: URL) {
+    private func finishSort(_ urls: [URL], into folder: String?, base: URL, mode: TransferMode) {
         chooser = nil
         previousApp?.activate(options: [])
         previousApp = nil
@@ -206,12 +207,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Esc: nothing at all happens to the files.
         guard let folder else { return }
 
-        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, history: &history)
+        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, mode: mode, history: &history)
+        finish(outcome)
+    }
+
+    /// Saves the history, remembers the drop for "Undo Last Drop" (also when some items failed) and
+    /// shows the toast.
+    private func finish(_ outcome: SortOutcome) {
         let saveError = saveHistory()
+        // A drop that changed nothing keeps the previous one undoable.
+        if !outcome.result.moves.isEmpty { lastOutcome = outcome }
         showResult(outcome, extraErrors: saveError.map { ["history not saved: \($0)"] } ?? [])
     }
 
+    /// Only the most recent drop can be undone, once.
+    @objc private func undoLastDrop() {
+        guard let outcome = lastOutcome else { return }
+        undo(outcome)
+    }
+
     private func undo(_ outcome: SortOutcome) {
+        // Another drop since then, or already undone: never undo an older drop.
+        guard let last = lastOutcome, last.id == outcome.id else {
+            toast.show(title: "Nothing to undo", lines: ["Only the most recent drop can be undone, once."], isError: false, actions: [])
+            return
+        }
+        lastOutcome = nil
         let back = Sorter.undo(outcome, history: &history)
         let saveError = saveHistory()
         var lines = back.moved.prefix(6).map { "← " + $0.path.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
@@ -219,9 +240,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lines += back.failures.map { "✗ \($0.name): \($0.reason)" }
         if let saveError { lines.append("✗ history not saved: \(saveError)") }
         let failed = !back.failures.isEmpty || saveError != nil
-        toast.show(title: failed ? "Undo incomplete" : "Moved \(plural(back.moved.count)) back",
+        let done = outcome.result.mode == .copy ? "Moved \(plural(back.moved.count)) of the copies to the Trash"
+                                                : "Moved \(plural(back.moved.count)) back"
+        if outcome.result.mode == .copy {
+            lines = back.moves.prefix(6).map { "✕ " + $0.source.lastPathComponent }
+            if back.moves.count > 6 { lines.append("… and \(back.moves.count - 6) more") }
+            lines += back.failures.map { "✗ \($0.name): \($0.reason)" }
+        }
+        toast.show(title: failed ? "Undo incomplete" : done,
                    lines: lines, isError: failed,
-                   actions: back.moved.isEmpty ? [] : [.init(title: "Reveal") {
+                   actions: back.moved.isEmpty || outcome.result.mode == .copy ? [] : [.init(title: "Reveal") {
                        NSWorkspace.shared.activateFileViewerSelecting(back.moved)
                    }])
     }
@@ -234,8 +262,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lines += extraErrors.map { "✗ " + $0 }
         let failed = !r.failures.isEmpty || !extraErrors.isEmpty
         let title = r.failures.isEmpty
-            ? "Moved \(plural(r.moved.count)) to \(o.folder)"
-            : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed"
+            ? "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.folder)"
+            : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
         var actions: [SortToast.Action] = []
         if !r.moves.isEmpty {
             actions.append(.init(title: "Undo") { [weak self] in self?.undo(o) })
@@ -356,6 +384,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             m.addItem(withTitle: "Show Shelf", action: #selector(pinShelf), keyEquivalent: "").target = self
             m.addItem(.separator())
         }
+        m.addItem(withTitle: "Undo Last Drop", action: #selector(undoLastDrop), keyEquivalent: "").target = self
+        m.addItem(.separator())
         m.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: "").target = self
         m.addItem(withTitle: "Open Configuration File", action: #selector(openConfig), keyEquivalent: "").target = self
         m.addItem(.separator())
@@ -387,6 +417,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = edit
         main.addItem(editItem)
         return main
+    }
+}
+
+extension AppDelegate: NSMenuItemValidation {
+    /// "Undo Last Drop" says what it would undo, and is disabled when there is nothing.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(undoLastDrop) else { return true }
+        if let last = lastOutcome {
+            item.title = "Undo Last Drop: \(last.result.mode.pastTense) \(last.result.moves.count) to \(last.folder)"
+            return true
+        }
+        item.title = "Undo Last Drop"
+        return false
     }
 }
 

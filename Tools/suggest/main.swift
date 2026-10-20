@@ -31,7 +31,7 @@ catch { fail(error.localizedDescription) }
 
 let items = args.dropFirst().map { DropItem(name: $0.hasSuffix("/") ? String($0.dropLast()) : $0, isDirectory: $0.hasSuffix("/")) }
 let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules)
-let ranked = Matcher.rank(suggestion.ranked, query: query, favorites: Set(config.favorites))
+let ranked = Matcher.rank(suggestion.ranked, query: query, favorites: Set(config.favoritePaths))
 
 print("\(folders.count) folders, preselected: \(suggestion.preselected ?? "none")")
 for c in ranked.prefix(8) {

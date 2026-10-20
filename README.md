@@ -41,6 +41,11 @@ Drop Sorter runs in the background without a Dock icon.
   names. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
   the files where they are, ⇥ steps into the selected folder, ↑↓ select.
 - **Favorite spots** (★): dropping there moves at once. The toast offers Undo and Reveal in Finder.
+- **Copy instead of move**: hold ⌥ while dropping (the cursor shows the green +), like in Finder. A
+  favorite can be set to always copy (shown with a copy symbol), and so can a drop app. Undo of a copy
+  moves the copies to the Trash; the originals are never touched.
+- **Undo Last Drop** (shelf right-click menu, menu-bar icon) undoes the most recent drop once, also
+  after the toast is gone and also when some items of that drop failed. Older drops cannot be undone.
 - **Settings**: gear on the shelf, right-click on the shelf, or the optional menu-bar icon (dropping
   files on the icon opens the chooser too). Every change is saved at once. A hand-edited
   `config.yaml` is picked up the next time the shelf appears or something is dropped.
@@ -113,6 +118,8 @@ renameRules:                             # folder: pattern, also for its subfold
     subfolders: false
 favorites:
   - 00 Inbox
+  - folder: 80 Backup          # this spot always copies
+    copy: true
   - 30 Areas/Finance/Invoices
   - 90 Archive
 exclude:

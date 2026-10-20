@@ -149,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private let targetLabel = NSTextField(labelWithString: "")
     private let patternField = NSTextField(string: "")
     private let previewLabel = NSTextField(labelWithString: "")
+    private let copyCheck = NSButton(checkboxWithTitle: "Copy instead of move (the originals stay where they are)", target: nil, action: nil)
 
     /// The bundle's file name, so a renamed copy shows its own name.
     private var appName: String { Bundle.main.bundleURL.deletingPathExtension().lastPathComponent }
@@ -211,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             alert("Target folder not found", target.path)
             return
         }
-        let result = Mover.move(urls, to: target, pattern: config.pattern)
+        let result = Mover.move(urls, to: target, pattern: config.pattern, mode: config.mode)
         showToast(result, target: target)
     }
 
@@ -221,7 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         if r.moved.count > maxLines { lines.append("… and \(r.moved.count - maxLines) more") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
         let title = r.failures.isEmpty
-            ? "Moved \(r.moved.count) item\(r.moved.count == 1 ? "" : "s") to \(target.lastPathComponent)"
+            ? "\(r.mode.pastTense) \(r.moved.count) item\(r.moved.count == 1 ? "" : "s") to \(target.lastPathComponent)"
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed"
         toast.show(title: title, lines: lines, footer: "Click to show in Finder: \(target.path)",
                    isError: !r.failures.isEmpty) {
@@ -285,6 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             heading("Target folder"), targetRow,
             heading("Rename pattern"), patternRow, previewLabel,
             small("Tokens: " + Renamer.tokenHelp),
+            copyCheck,
             drop,
             small("Settings belong to this copy only (\(Bundle.main.bundleURL.lastPathComponent)).")
         ])
@@ -293,6 +295,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         stack.spacing = 8
         stack.setCustomSpacing(16, after: targetRow)
         stack.setCustomSpacing(16, after: stack.views[5])
+        stack.setCustomSpacing(16, after: copyCheck)
+        copyCheck.target = self
+        copyCheck.action = #selector(copyToggled)
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -330,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         targetLabel.stringValue = config.target ?? "— not set —"
         targetLabel.textColor = config.target == nil ? .systemRed : .labelColor
         patternField.stringValue = config.pattern
+        copyCheck.state = config.mode == .copy ? .on : .off
         updatePreview()
     }
 
@@ -356,6 +362,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         else { return }
         var updated = config
         updated.pattern = pattern
+        save(updated)
+    }
+
+    @objc private func copyToggled() {
+        var updated = config
+        updated.mode = copyCheck.state == .on ? .copy : .move
         save(updated)
     }
 

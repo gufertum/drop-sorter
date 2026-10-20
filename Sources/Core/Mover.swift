@@ -5,7 +5,16 @@ struct Move: Equatable {
     let destination: URL
 }
 
+/// Move the items, or leave them where they are and put copies into the target.
+enum TransferMode: String, Codable, Equatable {
+    case move, copy
+
+    /// "Moved" / "Copied", for messages.
+    var pastTense: String { self == .move ? "Moved" : "Copied" }
+}
+
 struct MoveResult {
+    var mode: TransferMode = .move
     var moves: [Move] = []
     var failures: [(name: String, reason: String)] = []
     /// Destinations of the moved items, in drop order.
@@ -28,11 +37,11 @@ enum Mover {
     /// Prefix for log lines, set by each app ("DropMover", "DropSorter").
     static var logPrefix = "DropMover"
 
-    /// Moves each item into `target`. With a `pattern`, items are renamed with it; without, they keep their name.
-    /// Folders are moved with their content; only the top-level folder is renamed.
-    static func move(_ urls: [URL], to target: URL, pattern: String?, now: Date = Date(),
+    /// Moves (or copies) each item into `target`. With a `pattern`, items are renamed with it; without,
+    /// they keep their name. Folders go with their content; only the top-level folder is renamed.
+    static func move(_ urls: [URL], to target: URL, pattern: String?, mode: TransferMode = .move, now: Date = Date(),
                      fileManager fm: FileManager = .default) -> MoveResult {
-        var result = MoveResult()
+        var result = MoveResult(mode: mode)
         let realTarget = target.standardizedFileURL.resolvingSymlinksInPath().path
         for src in urls {
             let name = src.lastPathComponent
@@ -44,21 +53,38 @@ enum Mover {
                 let dest = Renamer.uniqueDestination(in: target, name: newName, isDirectory: isDir) {
                     fm.fileExists(atPath: $0.path)
                 }
-                try fm.moveItem(at: src, to: dest)
+                switch mode {
+                case .move: try fm.moveItem(at: src, to: dest)
+                case .copy: try fm.copyItem(at: src, to: dest)
+                }
                 result.moves.append(Move(source: src, destination: dest))
             } catch {
-                NSLog("%@: failed to move '%@' to '%@': %@", logPrefix, src.path, target.path, error.localizedDescription)
+                NSLog("%@: failed to %@ '%@' to '%@': %@", logPrefix, mode.rawValue, src.path, target.path, error.localizedDescription)
                 result.failures.append((name, error.localizedDescription))
             }
         }
-        NSLog("%@: moved %d item(s) to '%@', %d failure(s)", logPrefix, result.moves.count, target.path, result.failures.count)
+        NSLog("%@: %@ %d item(s) to '%@', %d failure(s)", logPrefix, mode.pastTense.lowercased(), result.moves.count, target.path, result.failures.count)
         return result
     }
 
-    /// Moves the items of an earlier result back to their source folders. If the original name is taken
-    /// by now, the item gets the usual "-2" suffix instead of overwriting.
-    static func undo(_ previous: MoveResult, fileManager fm: FileManager = .default) -> MoveResult {
-        var result = MoveResult()
+    /// Reverses an earlier result. Moves go back to their source folders (with the usual "-2" suffix if
+    /// the original name is taken by now). Copies are removed through `removeCopy` (the Trash by
+    /// default); the originals are not touched. For copies the result's moves are copy -> Trash location.
+    static func undo(_ previous: MoveResult, fileManager fm: FileManager = .default,
+                     removeCopy: (URL) throws -> URL? = Mover.trash) -> MoveResult {
+        var result = MoveResult(mode: previous.mode)
+        if previous.mode == .copy {
+            for m in previous.moves.reversed() {
+                do {
+                    let gone = try removeCopy(m.destination)
+                    result.moves.append(Move(source: m.destination, destination: gone ?? m.destination))
+                } catch {
+                    NSLog("%@: undo failed for copy '%@': %@", logPrefix, m.destination.path, error.localizedDescription)
+                    result.failures.append((m.destination.lastPathComponent, error.localizedDescription))
+                }
+            }
+            return result
+        }
         for m in previous.moves.reversed() {
             do {
                 let isDir = (try? m.destination.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
@@ -74,5 +100,11 @@ enum Mover {
             }
         }
         return result
+    }
+
+    static func trash(_ url: URL) throws -> URL? {
+        var result: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+        return result as URL?
     }
 }

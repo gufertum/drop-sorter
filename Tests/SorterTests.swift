@@ -103,6 +103,25 @@ func sorterTests() throws {
     eq(history.counts["hetzner"] == nil, true)
     eq(history.count("notes", "90 Archive"), 1)
 
+    // Copy into a folder: original stays, history learns, undo removes the copy and the history entry.
+    try touch(downloads.appendingPathComponent("receipt-hetzner.pdf"))
+    let fakeTrash = root.appendingPathComponent("Trash")
+    try fm.createDirectory(at: fakeTrash, withIntermediateDirectories: true)
+    let cp = Sorter.sort([downloads.appendingPathComponent("receipt-hetzner.pdf")], into: "90 Archive",
+                         base: base, config: config, mode: .copy, history: &history, now: now)
+    eq(cp.result.moved.map(\.lastPathComponent), ["2026_receipt-hetzner.pdf"])
+    check(fm.fileExists(atPath: downloads.appendingPathComponent("receipt-hetzner.pdf").path), "original kept")
+    eq(history.count("receipt", "90 Archive"), 1)
+    let back = Sorter.undo(cp, history: &history) { url in
+        let d = fakeTrash.appendingPathComponent(url.lastPathComponent)
+        try fm.moveItem(at: url, to: d)
+        return d
+    }
+    eq(back.failures.count, 0)
+    check(!fm.fileExists(atPath: base.appendingPathComponent("90 Archive/2026_receipt-hetzner.pdf").path), "copy removed")
+    eq(history.count("receipt", "90 Archive"), 0)
+    check(cp.id != inv.id, "drops have distinct ids")
+
     // forget never goes below zero.
     history.forget(tokens: ["notes", "notes", "unknown"], folder: "90 Archive")
     eq(history.count("notes", "90 Archive"), 0)
