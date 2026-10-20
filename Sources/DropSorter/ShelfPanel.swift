@@ -4,7 +4,10 @@ import AppKit
 /// clicking it leave Finder the active app, so the shelf does not hide itself.
 final class ShelfPanel: NSPanel {
     /// Width of the visible shelf (without the glow margin).
-    static let width: CGFloat = 200
+    static let width: CGFloat = 300
+    /// Colours of the favorite spots, in order; the main spot uses the accent colour.
+    static let palette: [NSColor] = [.systemBlue, .systemGreen, .systemOrange, .systemPink, .systemPurple,
+                                     .systemTeal, .systemYellow, .systemRed, .systemIndigo, .systemMint, .systemBrown]
     /// Distance of the visible shelf from the right and bottom edge of the usable screen area.
     static let inset: CGFloat = 24
     /// A drop on the main spot; `.copy` when ⌥ was held.
@@ -48,7 +51,7 @@ final class ShelfPanel: NSPanel {
         content.menu = menu
 
         let title = NSTextField(labelWithString: "Drop Sorter")
-        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.textColor = .secondaryLabelColor
         pinLabel.font = .systemFont(ofSize: 9, weight: .medium)
         pinLabel.textColor = .tertiaryLabelColor
@@ -73,7 +76,7 @@ final class ShelfPanel: NSPanel {
         spot.onHover = { [weak self] in self?.onDragOver?($0) }
 
         favoriteStack.orientation = .vertical
-        favoriteStack.spacing = 4
+        favoriteStack.spacing = 6
         favoriteStack.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = NSStackView(views: [header, spot, favoriteStack])
@@ -91,7 +94,7 @@ final class ShelfPanel: NSPanel {
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -18),
             spot.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
-            spot.heightAnchor.constraint(equalToConstant: 150),
+            spot.heightAnchor.constraint(equalToConstant: 200),
             favoriteStack.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20),
         ])
         contentView = glow
@@ -110,11 +113,16 @@ final class ShelfPanel: NSPanel {
     }
 
     /// One spot per favorite. `missing` folders are shown dimmed and refuse drops.
+    /// The favorite spots, for checks.
+    var favoriteSpotViews: [DropSpot] { favoriteSpots }
+
     func setFavorites(_ favorites: [Favorite], missing: Set<String>) {
         favoriteSpots.forEach { $0.removeFromSuperview() }
-        favoriteSpots = zip(favorites, ShelfLabels.labels(favorites.map(\.folder))).map { fav, label in
+        favoriteSpots = zip(favorites, ShelfLabels.labels(favorites.map(\.folder))).enumerated().map { index, pair in
+            let (fav, label) = pair
             let path = fav.folder
-            let f = DropSpot(symbol: fav.copy ? "plus.square.on.square" : "star", title: label, compact: true)
+            let f = DropSpot(symbol: fav.copy ? "plus.square.on.square" : "star.fill", title: label, compact: true,
+                             color: Self.palette[index % Self.palette.count])
             f.alwaysCopy = fav.copy
             f.toolTip = (missing.contains(path) ? "\(path) (folder not found)" : path) + (fav.copy ? " · copies" : "")
             f.missing = missing.contains(path)
@@ -124,7 +132,7 @@ final class ShelfPanel: NSPanel {
             f.translatesAutoresizingMaskIntoConstraints = false
             favoriteStack.addArrangedSubview(f)
             f.widthAnchor.constraint(equalTo: favoriteStack.widthAnchor).isActive = true
-            f.heightAnchor.constraint(equalToConstant: 38).isActive = true
+            f.heightAnchor.constraint(equalToConstant: 52).isActive = true
             return f
         }
         favoriteStack.isHidden = favoriteSpots.isEmpty
@@ -221,17 +229,20 @@ final class DropSpot: NSView {
     var alwaysCopy = false
     var missing = false { didSet { alphaValue = missing ? 0.4 : 1 } }
     private let compact: Bool
+    /// The spot's own colour: fill, frame, icon and hover glow.
+    let color: NSColor
     private var highlighted = false {
         didSet {
             needsDisplay = true
             // A glow around the spot while files hover over it.
-            layer?.shadowColor = NSColor.controlAccentColor.cgColor
+            layer?.shadowColor = color.cgColor
             layer?.shadowOpacity = highlighted ? 0.9 : 0
         }
     }
 
-    init(symbol: String, title: String, compact: Bool = false) {
+    init(symbol: String, title: String, compact: Bool = false, color: NSColor = .controlAccentColor) {
         self.compact = compact
+        self.color = color
         super.init(frame: .zero)
         registerForDraggedTypes([.fileURL])
         wantsLayer = true
@@ -239,23 +250,23 @@ final class DropSpot: NSView {
         layer?.shadowOffset = .zero
         layer?.shadowRadius = 8
         let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!)
-        icon.symbolConfiguration = .init(pointSize: compact ? 14 : 40, weight: compact ? .regular : .light)
-        icon.contentTintColor = compact ? .systemYellow : .controlAccentColor
+        icon.symbolConfiguration = .init(pointSize: compact ? 18 : 48, weight: compact ? .semibold : .light)
+        icon.contentTintColor = color
         // NSImageView registers itself for file drags; over the icon it would take the drag away from
         // the spot (highlight off, drop lost). Only the spot itself is a drop target.
         icon.unregisterDraggedTypes()
         let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: compact ? 12 : 13, weight: compact ? .medium : .regular)
-        label.textColor = compact ? .labelColor : .secondaryLabelColor
+        label.font = .systemFont(ofSize: compact ? 14 : 15, weight: .semibold)
+        label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingHead
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let stack = NSStackView(views: [icon, label])
         stack.orientation = compact ? .horizontal : .vertical
-        stack.spacing = compact ? 5 : 6
+        stack.spacing = compact ? 8 : 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate(compact ? [
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ] : [
@@ -268,13 +279,11 @@ final class DropSpot: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let radius: CGFloat = compact ? 7 : 10
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: radius, yRadius: radius)
-        if highlighted {
-            NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
-            path.fill()
-        }
-        (highlighted ? NSColor.controlAccentColor
-            : compact ? NSColor.tertiaryLabelColor : NSColor.controlAccentColor.withAlphaComponent(0.7)).setStroke()
-        path.lineWidth = 1.5
+        // A tint of the spot's colour, stronger while files hover over it.
+        color.withAlphaComponent(highlighted ? 0.35 : 0.14).setFill()
+        path.fill()
+        (highlighted ? color : color.withAlphaComponent(0.75)).setStroke()
+        path.lineWidth = highlighted ? 2.5 : 1.5
         if !compact { path.setLineDash([5, 4], count: 2, phase: 0) }
         path.stroke()
     }
