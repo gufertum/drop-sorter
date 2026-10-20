@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var history = History()
 
     private let watcher = FrontmostWatcher()
-    private lazy var shelf = ShelfPanel(menu: buildShelfMenu())
+    private lazy var shelf = ShelfPanel(menu: buildMenu(includeShowShelf: false))
     private let toast = SortToast()
     private var chooser: ChooserPanel?
     private var visibility = ShelfVisibility()
@@ -24,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previousApp: NSRunningApplication?
     private var pendingOpen: [URL] = []
     private var finishedLaunching = false
+    private var menuBar: MenuBarItem?
+    private var settings: SettingsWindow?
+    /// Modification date of the config file last read, to pick up hand edits.
+    private var configDate: Date?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Mover.logPrefix = "DropSorter"
@@ -38,8 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             fatal("Drop Sorter cannot start", "\(error.localizedDescription)\n\nFix or remove the file, then start Drop Sorter again.")
         }
-        applyShelfConfig()
+        configDate = configStore.modificationDate
+        applyConfig()
         shelf.onDrop = { [weak self] in self?.beginSort($0) }
+        shelf.onDropFavorite = { [weak self] folder, urls in self?.sortIntoFavorite(urls, folder) }
+        shelf.onSettings = { [weak self] in self?.showSettings() }
         shelf.onDragOver = { [weak self] over in
             self?.dragOver = over
             self?.updateShelf()
@@ -71,10 +78,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if finishedLaunching { beginSort(urls) } else { pendingOpen += urls }
     }
 
-    private func applyShelfConfig() {
+    /// Brings shelf, favorites, menu-bar icon and an open Settings window in line with `config`.
+    private func applyConfig() {
         visibility.showOnDesktop = config.shelf.showOnDesktop
         visibility.ownBundleID = Bundle.main.bundleIdentifier ?? visibility.ownBundleID
         watcher.watchFinderWindows = !config.shelf.showOnDesktop
+        let missing = config.baseURL.map { base in
+            Set(config.favorites.filter { !FileManager.default.fileExists(atPath: base.appendingPathComponent($0).path) })
+        } ?? Set(config.favorites)
+        shelf.setFavorites(config.favorites, missing: missing)
+        if config.menuBarIcon && menuBar == nil {
+            menuBar = MenuBarItem(menu: buildMenu(includeShowShelf: true))
+            menuBar?.onDrop = { [weak self] in self?.beginSort($0) }
+        } else if !config.menuBarIcon, let item = menuBar {
+            item.remove()
+            menuBar = nil
+        }
+        settings?.update(config: config, historyWords: history.counts.count)
+    }
+
+    /// Re-reads the config file when it changed on disk (edited by hand), so no restart is needed.
+    /// Returns false, after showing the error, when the file cannot be read; the last good config stays in use.
+    @discardableResult
+    private func reloadConfigIfChanged() -> Bool {
+        let date = configStore.modificationDate
+        guard date != configDate else { return true }
+        do {
+            config = try configStore.load()
+            configDate = date
+            applyConfig()
+            NSLog("DropSorter: configuration reloaded from %@", configStore.activeURL?.path ?? "(defaults)")
+            return true
+        } catch {
+            showError("Configuration error", [error.localizedDescription, "Still using the last working settings."], openConfig: true)
+            configDate = date
+            return false
+        }
     }
 
     // MARK: Shelf visibility
@@ -89,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .show:
             hideWork?.cancel()
             hideWork = nil
+            if !shelf.isShown { reloadConfigIfChanged() }
             shelf.slideIn()
         case .keep:
             break
@@ -116,14 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func beginSort(_ urls: [URL]) {
         guard chooser == nil, !urls.isEmpty else { return }
-        // Re-read the config on every drop, so edits to config.yaml apply without a restart.
-        do {
-            config = try configStore.load()
-            applyShelfConfig()
-        } catch {
-            showError("Configuration error", [error.localizedDescription], openConfig: true)
-            return
-        }
+        guard reloadConfigIfChanged() else { return }
         guard let base = config.baseURL else { return askForBase(then: urls) }
 
         let folders: [FolderEntry]
@@ -147,6 +180,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateShelf()
         NSApp.activate(ignoringOtherApps: true)
         panel.present()
+    }
+
+    /// Drop on a favorite spot: moves at once, the toast offers Undo.
+    private func sortIntoFavorite(_ urls: [URL], _ folder: String) {
+        guard chooser == nil, reloadConfigIfChanged() else { return }
+        guard let base = config.baseURL else { return askForBase(then: urls) }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: base.appendingPathComponent(folder).path, isDirectory: &isDir), isDir.boolValue else {
+            showError("Favorite folder not found", [folder, "Nothing was moved. Fix the favorite in Settings."], openConfig: false)
+            applyConfig()
+            return
+        }
+        let outcome = Sorter.sort(urls, into: folder, base: base, config: config, history: &history)
+        let saveError = saveHistory()
+        showResult(outcome, extraErrors: saveError.map { ["history not saved: \($0)"] } ?? [])
     }
 
     private func finishSort(_ urls: [URL], into folder: String?, base: URL) {
@@ -224,6 +272,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try configStore.save(updated)
             config = updated
+            configDate = configStore.modificationDate
+            applyConfig()
         } catch {
             showError("Cannot save configuration", [error.localizedDescription], openConfig: false)
             return
@@ -235,6 +285,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("DropSorter: %@: %@", title, lines.joined(separator: " "))
         toast.show(title: title, lines: lines, isError: true,
                    actions: openConfig ? [.init(title: "Open Configuration") { [weak self] in self?.openConfig() }] : [])
+    }
+
+    @objc private func showSettings() {
+        if settings == nil {
+            let s = SettingsWindow(config: config, configPath: (configStore.activeURL ?? configStore.yamlURL).path,
+                                   historyWords: history.counts.count)
+            s.onChange = { [weak self] updated in self?.saveFromSettings(updated) }
+            s.onForgetHistory = { [weak self] in
+                guard let self else { return 0 }
+                self.history = History()
+                if let error = self.saveHistory() { self.showError("History not saved", [error], openConfig: false) }
+                return 0
+            }
+            settings = s
+        }
+        reloadConfigIfChanged()
+        settings?.show()
+    }
+
+    /// Returns an error text for the Settings window, nil when saved.
+    private func saveFromSettings(_ updated: SorterConfig) -> String? {
+        do {
+            try configStore.save(updated)
+        } catch {
+            NSLog("DropSorter: cannot save configuration: %@", error.localizedDescription)
+            return "Not saved: \(error.localizedDescription)"
+        }
+        config = updated
+        configDate = configStore.modificationDate
+        applyConfig()
+        return nil
+    }
+
+    @objc private func pinShelf() {
+        pinned = true
+        updateShelf()
     }
 
     @objc private func openConfig() {
@@ -262,10 +348,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Menus
 
-    /// Right-click on the shelf. The settings window and menu-bar icon come in phase 3.
-    private func buildShelfMenu() -> NSMenu {
+    /// Right-click menu of the shelf, and the menu of the menu-bar icon.
+    private func buildMenu(includeShowShelf: Bool) -> NSMenu {
         let m = NSMenu()
-        m.addItem(withTitle: "Open Configuration", action: #selector(openConfig), keyEquivalent: "").target = self
+        if includeShowShelf {
+            m.addItem(withTitle: "Show Shelf", action: #selector(pinShelf), keyEquivalent: "").target = self
+            m.addItem(.separator())
+        }
+        m.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: "").target = self
+        m.addItem(withTitle: "Open Configuration File", action: #selector(openConfig), keyEquivalent: "").target = self
         m.addItem(.separator())
         m.addItem(withTitle: "Quit Drop Sorter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         return m
@@ -276,8 +367,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         appItem.submenu = NSMenu()
+        appItem.submenu?.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         appItem.submenu?.addItem(withTitle: "Quit Drop Sorter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         main.addItem(appItem)
+        let windowItem = NSMenuItem()
+        windowItem.submenu = NSMenu(title: "Window")
+        windowItem.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        main.addItem(windowItem)
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")

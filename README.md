@@ -17,8 +17,8 @@ Concept and GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 | Phase | Content | State |
 |---|---|---|
 | 1 | Repository layout, tested core (matcher, folder index, history, mover, config) | done |
-| 2 | Shelf, chooser, toast with Undo | in review |
-| 3 | Settings, favorites, optional menu-bar icon, open at login | open |
+| 2 | Shelf, chooser, toast with Undo | done |
+| 3 | Settings, favorites, optional menu-bar icon, open at login, stable signing | in review |
 | 4 | Generate, update and adopt Drop Mover apps | open |
 
 Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
@@ -31,6 +31,34 @@ Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, App
 ./build.sh      # unit tests, build/suggest, build/Drop Mover.app, build/Drop Sorter.app
 open "build/Drop Sorter.app"
 ```
+
+## Use
+
+Drop Sorter runs in the background without a Dock icon.
+
+- **Shelf**: slides in at the right screen edge while Finder is the active app and slides away 0.4 s
+  after another app becomes active. Launching Drop Sorter again pins it until you click ✕.
+- **Main spot**: opens the chooser. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
+  the files where they are, ⇥ steps into the selected folder, ↑↓ select.
+- **Favorite spots** (★): dropping there moves at once. The toast offers Undo and Reveal in Finder.
+- **Settings**: gear on the shelf, right-click on the shelf, or the optional menu-bar icon (dropping
+  files on the icon opens the chooser too). Every change is saved at once. A hand-edited
+  `config.yaml` is picked up the next time the shelf appears or something is dropped.
+- **Open at login**: in Settings (uses the system login items; the app starts from where it is, so
+  move it to /Applications first).
+
+### Stable signature
+
+macOS ties privacy grants (such as access to a vault in `~/Documents`) to the app's signature. An
+ad-hoc signature changes with every build, so macOS may ask again. Create a local signing identity
+once; `build.sh` then uses it automatically:
+
+```bash
+scripts/make-signing-identity.sh      # "Drop Sorter Local" in your login keychain
+./build.sh                            # prints: signed with "Drop Sorter Local"
+```
+
+The first `codesign` run may ask for keychain access: choose "Always Allow".
 
 ## Try the suggestions
 
@@ -67,7 +95,9 @@ or in order); matches at the start of a path segment rank first.
 
 ## Configuration
 
-`~/Library/Application Support/li.sudo.dropsorter/config.yaml`, every key optional. `config.json` with
+`~/Library/Application Support/li.sudo.dropsorter/config.yaml`, every key optional, editable in Settings
+or by hand. Settings rewrites the file without comments; before it overwrites a hand-written file
+with comments, it keeps a copy as `config.yaml.bak`. `config.json` with
 the same keys is read when there is no `config.yaml`; when both exist, `config.yaml` wins and a warning
 is logged. Saving writes back to the file that was read.
 

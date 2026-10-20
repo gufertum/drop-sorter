@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs the unit tests, then builds "build/suggest", "build/Drop Mover.app" and "build/Drop Sorter.app".
 # Usage: ./build.sh
-# DROPSORTER_SIGN_ID="<codesigning identity>" signs Drop Sorter with a stable identity, so macOS
-# privacy grants (e.g. access to ~/Documents) survive rebuilds; without it the app is signed ad hoc.
+# Drop Sorter is signed with a stable identity when one exists, so macOS privacy grants (e.g. access
+# to a vault in ~/Documents) survive rebuilds: DROPSORTER_SIGN_ID, else "Drop Sorter Local" (created by
+# scripts/make-signing-identity.sh), else ad hoc.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -52,6 +53,14 @@ iconutil -c icns "$BUILD/obj/SorterIcon.iconset" -o "$SORTER/Contents/Resources/
 cp Resources/DropSorter/Info.plist "$SORTER/Contents/Info.plist"
 printf 'APPL????' > "$SORTER/Contents/PkgInfo"
 # Drop Sorter keeps its state in Application Support, so its bundle can be sealed.
-codesign --force --sign "${DROPSORTER_SIGN_ID:--}" "$SORTER"
-[[ -n "${DROPSORTER_SIGN_ID:-}" ]] || echo "    (ad-hoc signature: privacy grants may be asked again after each rebuild)"
+SIGN_ID="${DROPSORTER_SIGN_ID:-}"
+if [[ -z "$SIGN_ID" ]] && security find-certificate -c "Drop Sorter Local" >/dev/null 2>&1; then
+  SIGN_ID="Drop Sorter Local"
+fi
+codesign --force --sign "${SIGN_ID:--}" "$SORTER"
+if [[ -n "$SIGN_ID" ]]; then
+  echo "    signed with \"$SIGN_ID\""
+else
+  echo "    ad-hoc signature: privacy grants may be asked again after each rebuild (see scripts/make-signing-identity.sh)"
+fi
 echo "==> built: $SORTER"

@@ -134,4 +134,21 @@ func sorterConfigStoreTests() throws {
     eq(reason("favorites: [/abs]\n"), SorterConfigError.notRelative("/abs").errorDescription!)
     eq(try String(contentsOf: store.yamlURL, encoding: .utf8), "favorites: [/abs]\n")
     check((try? store.save({ var x = SorterConfig(); x.favorites = ["/abs"]; return x }())) == nil, "invalid config not saved")
+
+    // Saving over a hand-written file keeps a copy of it; files the app wrote itself are not backed up.
+    let handWritten = "# my vault\nbase: ~/Vault   # comment\n"
+    try Data(handWritten.utf8).write(to: store.yamlURL)
+    try store.save(c)
+    eq(try String(contentsOf: store.backupURL, encoding: .utf8), handWritten)
+    try fm.removeItem(at: store.backupURL)
+    try store.save(c)
+    check(!fm.fileExists(atPath: store.backupURL.path), "no backup of a file the app wrote")
+    check(store.modificationDate != nil, "modification date of the active file")
+}
+
+func shelfLabelTests() {
+    eq(ShelfLabels.labels(["00 Inbox", "30 Areas/Finance/Invoices", "90 Archive"]), ["00 Inbox", "Invoices", "90 Archive"])
+    eq(ShelfLabels.labels(["A/X/Invoices", "B/X/Invoices", "Invoices"]), ["A/X/Invoices", "B/X/Invoices", "Invoices"])
+    eq(ShelfLabels.labels(["A/Invoices", "B/Invoices", "C/Notes"]), ["A/Invoices", "B/Invoices", "Notes"])
+    eq(ShelfLabels.labels([]), [])
 }

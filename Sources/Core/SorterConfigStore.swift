@@ -60,9 +60,30 @@ struct SorterConfigStore {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             data = try encoder.encode(config)
         } else {
-            data = Data(("# Drop Sorter configuration, see README.md\n" + (try YAML.encode(config, keyOrder: Self.keyOrder))).utf8)
+            data = Data((Self.header + (try YAML.encode(config, keyOrder: Self.keyOrder))).utf8)
+            try backupHandWritten(url)
         }
         try data.write(to: url, options: .atomic)
+    }
+
+    static let header = "# Drop Sorter configuration, see README.md\n"
+    var backupURL: URL { directory.appendingPathComponent("config.yaml.bak") }
+
+    /// The writer cannot keep comments. Before the first save over a file with comments of its own,
+    /// keep a copy as config.yaml.bak (replacing an older copy).
+    private func backupHandWritten(_ url: URL) throws {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let comments = text.components(separatedBy: "\n").filter { $0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+        guard comments.contains(where: { $0 + "\n" != Self.header }) else { return }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: backupURL.path) { try fm.removeItem(at: backupURL) }
+        try fm.copyItem(at: url, to: backupURL)
+        NSLog("%@: config.yaml had comments; saved a copy as %@", Mover.logPrefix, backupURL.path)
+    }
+
+    /// Modification date of the file in use, to notice edits made outside the app.
+    var modificationDate: Date? {
+        activeURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.modificationDate] as? Date }
     }
 
     /// DecodingError descriptions name no key; this one does ("suggest.minScore: expected a number").

@@ -46,4 +46,13 @@ enum FolderIndex {
         }
         return entries.sorted { $0.path < $1.path }
     }
+
+    /// `url` as a path relative to `base`, or nil when it is not inside it (or is `base` itself).
+    /// Symbolic links are resolved on both sides (/var vs /private/var, a vault reached through a link).
+    static func relativePath(of url: URL, in base: URL) -> String? {
+        let b = base.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        let u = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        guard u.count > b.count, Array(u.prefix(b.count)) == b else { return nil }
+        return u.dropFirst(b.count).joined(separator: "/")
+    }
 }
