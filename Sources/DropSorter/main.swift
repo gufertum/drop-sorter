@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingOpen: [URL] = []
     private var finishedLaunching = false
     private var menuBar: MenuBarItem?
+    private let dropAppManager = DropAppManager()
     private var settings: SettingsWindow?
     /// Modification date of the config file last read, to pick up hand edits.
     private var configDate: Date?
@@ -290,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         if settings == nil {
             let s = SettingsWindow(config: config, configPath: (configStore.activeURL ?? configStore.yamlURL).path,
-                                   historyWords: history.counts.count)
+                                   historyWords: history.counts.count, dropApps: dropAppManager)
             s.onChange = { [weak self] updated in self?.saveFromSettings(updated) }
             s.onForgetHistory = { [weak self] in
                 guard let self else { return 0 }

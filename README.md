@@ -18,8 +18,8 @@ Concept and GUI preview: https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 |---|---|---|
 | 1 | Repository layout, tested core (matcher, folder index, history, mover, config) | done |
 | 2 | Shelf, chooser, toast with Undo | done |
-| 3 | Settings, favorites, optional menu-bar icon, open at login, stable signing | in review |
-| 4 | Generate, update and adopt Drop Mover apps | open |
+| 3 | Settings, favorites, optional menu-bar icon, open at login, stable signing | done |
+| 4 | Generate, update and adopt Drop Mover apps | in review |
 
 Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
 
@@ -44,6 +44,8 @@ Drop Sorter runs in the background without a Dock icon.
 - **Settings**: gear on the shelf, right-click on the shelf, or the optional menu-bar icon (dropping
   files on the icon opens the chooser too). Every change is saved at once. A hand-edited
   `config.yaml` is picked up the next time the shelf appears or something is dropped.
+- **Drop apps** (Settings › Favorites & Drop Apps): create standalone Drop Mover apps for one fixed
+  folder, find existing ones, update them or adopt old copies. They keep their target and pattern.
 - **Open at login**: in Settings (uses the system login items; the app starts from where it is, so
   move it to /Applications first).
 
@@ -123,6 +125,8 @@ shelf:
   showOnDesktop: true
   hideDelayMs: 400
 menuBarIcon: false
+dropApps:            # managed in Settings › Drop apps
+  - ~/Documents/2ndBrain-Files/00-Inbox/_archiviere-rechnungen.app
 ```
 
 All folder paths are relative to `base`. Hidden folders (`.obsidian`, `.trash`, `.git`) and packages

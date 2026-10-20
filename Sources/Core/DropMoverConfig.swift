@@ -6,6 +6,15 @@ struct DropConfig: Codable, Equatable {
     var pattern: String = Renamer.defaultPattern
 }
 
+// In an extension to keep the memberwise initializer; a missing pattern takes the default.
+extension DropConfig {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        target = try c.decodeIfPresent(String.self, forKey: .target)
+        pattern = try c.decodeIfPresent(String.self, forKey: .pattern) ?? Renamer.defaultPattern
+    }
+}
+
 struct ConfigStore {
     let url: URL
 

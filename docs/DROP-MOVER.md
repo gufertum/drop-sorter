@@ -28,22 +28,20 @@ Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, App
 
 ## Create a copy
 
-Either copy it by hand and set the target in the window:
+Use Drop Sorter: Settings › Favorites & Drop Apps › **New…** asks for the target folder and where to
+put the app. It validates both, never overwrites an existing app, applies the archive pattern when
+the target is in the archive, and draws the labelled icon. **Find…** lists existing copies (also old
+ones with the bundle id `io.schaedler.dropmover`), **Update** / **Update All** replace them with the
+current build while keeping each copy's `config.json`. The old bundle goes to the Trash.
+
+A copy also works when made by hand; set the target in its window:
 
 ```bash
 cp -R "build/Drop Mover.app" ~/Documents/Inbox/_archive-invoices.app
 open ~/Documents/Inbox/_archive-invoices.app
 ```
 
-or create a configured copy in one step:
-
-```bash
-scripts/install-copy.sh ~/Documents/Inbox _archive-invoices ~/Documents/Archive/Invoices
-scripts/install-copy.sh ~/Documents/Inbox _keep-names ~/Documents/Archive "{original}"
-```
-
-The script validates the build, the folders and the pattern, and refuses to overwrite an existing
-app.
+Copies run on their own; Drop Sorter does not need to be running.
 
 ## Rename pattern
 
