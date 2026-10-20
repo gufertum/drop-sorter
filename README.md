@@ -37,7 +37,7 @@ Drop Sorter runs in the background without a Dock icon. On the first start it op
 short welcome and asks for the base folder; the shelf flashes in the accent colour at every launch,
 so it is easy to find.
 
-- **Shelf**: slides in at the right screen edge while Finder is the active app and slides away 0.4 s
+- **Shelf**: pops up at the bottom right of the screen while Finder is the active app and slides away 0.4 s
   after another app becomes active. Launching Drop Sorter again pins it until you click ✕.
 - **Main spot**: opens the chooser. Folders with a rename rule show "rename" and a preview of the new
   names. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
