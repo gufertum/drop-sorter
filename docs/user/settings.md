@@ -1,9 +1,12 @@
 # Settings
 
 Open Settings with the gear on the shelf, a right-click on the shelf, or the menu-bar icon. Every change
-is saved at once to the [configuration file](configuration.md).
+is saved at once to the [configuration file](configuration.md); the line at the bottom of the window says
+where. A change that cannot be saved is refused with the reason in red above that line.
 
 ## Folders
+
+![Settings, Folders tab: target folders and rename rules](images/settings-folders.png)
 
 **Target folders**: the folders files can go into.
 
@@ -15,12 +18,16 @@ is saved at once to the [configuration file](configuration.md).
 
 - **Add Folder…**, **Remove**, **Date Prefix**, **Keep Names**; double-click a pattern to edit it.
 - **Subfolders**: whether the rule also applies to the folders inside.
+- **Example**: what `invoice.pdf` would be called, or what is wrong with the pattern.
 
 ## Shelf
+
+![Settings, Shelf tab: three favorites, one with an extra copy and one that always copies](images/settings-shelf.png)
 
 **Favorites**: folders with their own spot on the shelf, see
 [Favorites](shelf-and-chooser.md#favorites).
 
+- The dot is the colour of the favorite's spot; the order here is the order on the shelf.
 - **+** and **−** add and remove, the arrows change the order.
 - **Copy**: this spot always copies instead of moving.
 - **Also Copy To…** / **No Extra Copy**: a second folder that gets a plain copy, see
@@ -36,6 +43,8 @@ is saved at once to the [configuration file](configuration.md).
 
 ## Drop Apps
 
+![Settings, Drop Apps tab: two drop apps, both up to date](images/settings-drop-apps.png)
+
 The Drop Mover apps Drop Sorter knows about, with their folder, target, version and status. See
 [Drop apps](drop-apps.md).
 
@@ -44,11 +53,13 @@ The Drop Mover apps Drop Sorter knows about, with their folder, target, version 
 
 ## Advanced
 
+![Settings, Advanced tab: startup, learning, command line, about and API](images/settings-advanced.png)
+
 - **Startup**: **Open Drop Sorter at login**. Move the app to Applications first: it starts from where
   it is.
 - **Learning**: how many words Drop Sorter has learned from earlier moves; **Forget…** clears them.
 - **Command line**: **Install Command Line Tool** links `dropsorter` into `~/.local/bin`, see
   [Automation](automation.md).
 - **About**: the version of Drop Sorter.
-- **API**: turn the REST API on or off, set the port, **Copy Token**, **New Token**. See
-  [REST API](automation.md#rest-api).
+- **API**: turn the REST API on or off, set the port, **Copy Token**, **New Token**. The text next to
+  the buttons says whether it is listening, or why not. See [REST API](automation.md#rest-api).

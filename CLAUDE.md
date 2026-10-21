@@ -39,6 +39,9 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - Host architecture only: the Command Line Tools lack the x86_64 Swift compatibility libraries.
 - UI changes cannot be verified with `screencapture` from a terminal without Screen Recording
   permission. Check window presence with `CGWindowListCopyWindowInfo` and do a manual test.
+  To look at a window, render it: `scripts/make-help-images.sh` (after `./build.sh`) runs the hidden
+  `--render-help-images` mode (`HelpImages.swift`), which draws shelf, chooser, toast and Settings
+  off-screen with `cacheDisplay` into `docs/user/images`.
 
 ## Design rules
 
@@ -88,6 +91,13 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
   fails on broken links and on undocumented config keys, CLI commands, MCP tools and rename tokens.
   `docs/user` uses only the Markdown subset `Tools/make-help/Markdown.swift` renders (no HTML, no nested
   lists, no links inside code); build.sh renders it into `Contents/Resources/Help`.
+- **Help images are rendered by the app, never screenshots**: `scripts/make-help-images.sh` rewrites
+  `docs/user/images` (light `x.png`, dark `x-dark.png`, @2x; committed, so Forgejo and the website show
+  them). Run it after a visible UI change and commit the result. It sets `CFFIXED_USER_HOME` to an
+  empty temporary folder; render mode refuses to run without it, so the sample tree never touches a real
+  home. Off-screen, glass and blur draw nothing: render mode flattens `NSVisualEffectView`s and puts a
+  plain stand-in over the Settings tab bar. `![alt](images/x.png)` only on a line of its own;
+  DocsTests checks alt text, existence and unused files.
 - Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
 - Keep the token list in `Renamer.swift` and the table in docs/DROP-MOVER.md in sync. Keep the scoring
   table in README.md in sync with `Matcher.score`.

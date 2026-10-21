@@ -10,6 +10,7 @@ func docsTests() throws {
     eq(Markdown.html("a\nb\n\nc"), "<p>a b</p>\n<p>c</p>")
     eq(Markdown.html("- one\n  more\n- two"), "<ul><li>one more</li><li>two</li></ul>")
     eq(Markdown.html("1. one\n2. two"), "<ol><li>one</li><li>two</li></ol>")
+    eq(Markdown.html("3. three\n4. four"), #"<ol start="3"><li>three</li><li>four</li></ol>"#)
     eq(Markdown.html("```bash\na <b>\n```"), #"<pre><code class="language-bash">a &lt;b&gt;</code></pre>"#)
     eq(Markdown.inline("**Undo** and `a**b**<c>`"), "<strong>Undo</strong> and <code>a**b**&lt;c&gt;</code>")
     eq(Markdown.inline("[Rules](rename-rules.md#tokens), [x](https://e.org/a.md)"),
@@ -17,6 +18,16 @@ func docsTests() throws {
     eq(Markdown.html("| A | B |\n|---|---|\n| `x\\|y` | 2 |"),
        "<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td><code>x|y</code></td><td>2</td></tr></tbody></table>")
     eq(Markdown.inline("<script>"), "&lt;script&gt;")
+    eq(Markdown.html("![The shelf](images/shelf.png)"),
+       #"<figure><img src="images/shelf.png" srcset="images/shelf.png 2x" alt="The shelf"></figure>"#)
+    eq(Markdown.html("Text\n  ![A \"b\" <c>](images/a.png)  \nmore", hasDarkVariant: { $0 == "images/a.png" }),
+       "<p>Text</p>\n<figure><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"images/a-dark.png 2x\">"
+       + "<img src=\"images/a.png\" srcset=\"images/a.png 2x\" alt=\"A &quot;b&quot; &lt;c&gt;\"></picture></figure>\n<p>more</p>")
+    eq(Markdown.html("See ![A](a.png) here").contains("<figure>"), false)
+    eq(Markdown.html("![A](images/a b.png)").contains("<figure>"), false)
+    eq(Markdown.darkName("images/settings-shelf.png"), "images/settings-shelf-dark.png")
+    eq(Markdown.images("# T\n\n![Shelf](images/shelf.png)\n\nSee [x](x.md).").map(\.src), ["images/shelf.png"])
+    eq(Markdown.links("![Shelf](images/shelf.png)\n[x](x.md)").map(\.file), ["x.md"])
 
     // Pages
     let dir = URL(fileURLWithPath: "docs/user", isDirectory: true)
@@ -38,6 +49,24 @@ func docsTests() throws {
     }
     let linked = Set(Markdown.links(pages["index.md"] ?? "").map(\.file))
     for n in names where n != "index.md" { check(linked.contains(n), "index.md links to \(n)") }
+
+    // Images: on a line of their own (the renderer knows no other kind), with alt text, in images/,
+    // existing; and every file in images/ is used (x-dark.png counts as used with x.png).
+    var used = Set<String>()
+    for (name, source) in pages {
+        for line in source.components(separatedBy: "\n") where line.contains("![") {
+            check(line.hasPrefix("![") && Markdown.images(line).count == 1, "\(name): image not on a line of its own: \(line)")
+        }
+        for image in Markdown.images(source) {
+            check(!image.alt.trimmingCharacters(in: .whitespaces).isEmpty, "\(name): \(image.src) has no alt text")
+            check(image.src.hasPrefix("images/") && !image.src.dropFirst(7).contains("/"), "\(name): \(image.src) is not in images/")
+            check(FileManager.default.fileExists(atPath: dir.appendingPathComponent(image.src).path), "\(name): \(image.src) is missing")
+            used.insert(image.src)
+            used.insert(Markdown.darkName(image.src))
+        }
+    }
+    let files = (try? FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("images").path)) ?? []
+    for f in files.sorted() where !f.hasPrefix(".") { check(used.contains("images/" + f), "docs/user/images/\(f) is used by a page") }
 
     // Reference pages cover every key, command, tool and token.
     let configDoc = pages["configuration.md"] ?? ""
