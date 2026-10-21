@@ -9,13 +9,14 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.schaedler.dropmover</string>
+	<string>li.sudo.dropmover</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>Drop Mover</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Both versions are set by build.sh from VERSION and the git commit count. -->
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.0</string>
 	<key>CFBundleVersion</key>

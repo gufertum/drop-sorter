@@ -1,39 +1,5 @@
 import AppKit
 
-// MARK: - Moving
-
-struct MoveResult {
-    var moved: [URL] = []
-    var failures: [(name: String, reason: String)] = []
-}
-
-/// Renames each dropped file or folder with the pattern and moves it into `target`.
-/// Folders are moved with their content; only the top-level folder is renamed.
-func moveItems(_ urls: [URL], to target: URL, pattern: String, now: Date = Date()) -> MoveResult {
-    let fm = FileManager.default
-    var result = MoveResult()
-    for src in urls {
-        let name = src.lastPathComponent
-        do {
-            if src.standardizedFileURL == target.standardizedFileURL {
-                throw CocoaError(.fileWriteInvalidFileName, userInfo: [NSLocalizedDescriptionKey: "Cannot move the target folder into itself."])
-            }
-            let isDir = (try? src.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            let newName = try Renamer.render(pattern, originalName: name, isDirectory: isDir, date: now)
-            let dest = Renamer.uniqueDestination(in: target, name: newName, isDirectory: isDir) {
-                fm.fileExists(atPath: $0.path)
-            }
-            try fm.moveItem(at: src, to: dest)
-            result.moved.append(dest)
-        } catch {
-            NSLog("DropMover: failed to move '%@' to '%@': %@", src.path, target.path, error.localizedDescription)
-            result.failures.append((name, error.localizedDescription))
-        }
-    }
-    NSLog("DropMover: moved %d item(s) to '%@', %d failure(s)", result.moved.count, target.path, result.failures.count)
-    return result
-}
-
 // MARK: - Toast
 
 /// Clickable, non-activating overlay in the top-right corner. Stays while hovered.
@@ -183,6 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     private let targetLabel = NSTextField(labelWithString: "")
     private let patternField = NSTextField(string: "")
     private let previewLabel = NSTextField(labelWithString: "")
+    private let alsoLabel = NSTextField(labelWithString: "")
+    private let copyCheck = NSButton(checkboxWithTitle: "Copy instead of move (the originals stay where they are)", target: nil, action: nil)
 
     /// The bundle's file name, so a renamed copy shows its own name.
     private var appName: String { Bundle.main.bundleURL.deletingPathExtension().lastPathComponent }
@@ -196,6 +164,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             alert("Cannot read configuration", "\(store.url.path)\n\n\(error.localizedDescription)\n\nUsing defaults until you change a setting.")
         }
         NSApp.applicationIconImage = IconRenderer.image(label: targetURL?.lastPathComponent)
+        // Copies made by hand or whose icon was lost have a target but no labelled Finder icon yet.
+        let customIcon = Bundle.main.bundleURL.appendingPathComponent("Icon\r")
+        if config.target != nil && !FileManager.default.fileExists(atPath: customIcon.path) {
+            updateIcons()
+        }
         toast.onDismiss = { [weak self] in self?.quitIfIdle() }
     }
 
@@ -206,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSLog("DropMover: started %@ at %@", AppVersion.version, Bundle.main.bundlePath)
         finishedLaunching = true
         if !launchedWithFiles { showWindow() }
     }
@@ -240,7 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             alert("Target folder not found", target.path)
             return
         }
-        let result = moveItems(urls, to: target, pattern: config.pattern)
+        let extra = config.alsoCopyTo.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath, isDirectory: true) }
+        let result = Mover.move(urls, to: target, pattern: config.pattern, mode: config.mode, alsoCopyTo: extra)
         showToast(result, target: target)
     }
 
@@ -249,8 +224,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         var lines = r.moved.prefix(maxLines).map { "→ " + $0.lastPathComponent }
         if r.moved.count > maxLines { lines.append("… and \(r.moved.count - maxLines) more") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
+        if let first = r.extraCopies.first { lines.append("+ \(r.extraCopies.count) also copied to \(first.destination.deletingLastPathComponent().lastPathComponent)") }
+        if !r.extraSkipped.isEmpty { lines.append("= \(r.extraSkipped.count) already there (identical), not copied again") }
+        lines += r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
         let title = r.failures.isEmpty
-            ? "Moved \(r.moved.count) item\(r.moved.count == 1 ? "" : "s") to \(target.lastPathComponent)"
+            ? "\(r.mode.pastTense) \(r.moved.count) item\(r.moved.count == 1 ? "" : "s") to \(target.lastPathComponent)"
             : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed"
         toast.show(title: title, lines: lines, footer: "Click to show in Finder: \(target.path)",
                    isError: !r.failures.isEmpty) {
@@ -288,6 +266,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         let chooseButton = NSButton(title: "Choose…", target: self, action: #selector(chooseTarget))
         let openButton = NSButton(title: "Show in Finder", target: self, action: #selector(openTarget))
         let targetRow = NSStackView(views: [targetLabel, chooseButton, openButton])
+        alsoLabel.lineBreakMode = .byTruncatingMiddle
+        alsoLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let alsoRow = NSStackView(views: [alsoLabel, NSButton(title: "Choose…", target: self, action: #selector(chooseAlsoCopyTo)),
+                                          NSButton(title: "None", target: self, action: #selector(clearAlsoCopyTo))])
 
         patternField.delegate = self
         patternField.placeholderString = Renamer.defaultPattern
@@ -314,6 +296,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             heading("Target folder"), targetRow,
             heading("Rename pattern"), patternRow, previewLabel,
             small("Tokens: " + Renamer.tokenHelp),
+            copyCheck,
+            heading("Also copy to"), alsoRow,
+            small("Optional: a plain copy of every dropped item goes into this folder as well (original name, nothing renamed)."),
             drop,
             small("Settings belong to this copy only (\(Bundle.main.bundleURL.lastPathComponent)).")
         ])
@@ -322,6 +307,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         stack.spacing = 8
         stack.setCustomSpacing(16, after: targetRow)
         stack.setCustomSpacing(16, after: stack.views[5])
+        stack.setCustomSpacing(16, after: copyCheck)
+        copyCheck.target = self
+        copyCheck.action = #selector(copyToggled)
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 16, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -335,6 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             stack.widthAnchor.constraint(equalToConstant: 560),
             targetRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             patternRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            alsoRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             previewLabel.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             drop.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             drop.heightAnchor.constraint(equalToConstant: 80),
@@ -359,6 +348,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         targetLabel.stringValue = config.target ?? "— not set —"
         targetLabel.textColor = config.target == nil ? .systemRed : .labelColor
         patternField.stringValue = config.pattern
+        copyCheck.state = config.mode == .copy ? .on : .off
+        alsoLabel.stringValue = config.alsoCopyTo ?? "— none —"
+        alsoLabel.textColor = config.alsoCopyTo == nil ? .secondaryLabelColor : .labelColor
         updatePreview()
     }
 
@@ -385,6 +377,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         else { return }
         var updated = config
         updated.pattern = pattern
+        save(updated)
+    }
+
+    @objc private func chooseAlsoCopyTo() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Also Copy Here"
+        panel.message = "Every dropped item is also copied into this folder."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard url.standardizedFileURL.path != targetURL?.standardizedFileURL.path else {
+            alert("Choose another folder", "The extra copy cannot go into the target folder itself.")
+            return
+        }
+        var updated = config
+        updated.alsoCopyTo = url.path
+        save(updated)
+    }
+
+    @objc private func clearAlsoCopyTo() {
+        var updated = config
+        updated.alsoCopyTo = nil
+        save(updated)
+    }
+
+    @objc private func copyToggled() {
+        var updated = config
+        updated.mode = copyCheck.state == .on ? .copy : .move
         save(updated)
     }
 
