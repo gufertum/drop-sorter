@@ -12,6 +12,8 @@ Drop Sorter needs macOS 13 or later on a Mac with Apple silicon.
 
 On the first launch the shelf flashes in the accent colour and Settings opens with a short welcome.
 
+![Settings, Folders tab: two target folders and three rename rules](images/settings-folders.png)
+
 1. In **Settings › Folders › Target folders**, click **Add Folder…** and choose the folders your files
    should go into, for example `~/Documents/Files`. Each target folder and every folder inside it can
    take files. Turn **Subfolders** off for a folder that should take files only itself.
@@ -26,12 +28,20 @@ disk), allow it: Drop Sorter cannot move files there otherwise.
 
 ## Your first drop
 
-1. Open a Finder window. The shelf slides in at the bottom right.
+1. Open a Finder window. The shelf slides in at the bottom right of that window's screen.
 2. Drag a file onto the big spot at the top of the shelf.
+
+![The shelf: the big Drop to sort spot, three favorite spots and the Trash spot](images/shelf.png)
+
 3. The chooser opens. If the name gives a clear hint, the folder is already selected: press Return.
    Otherwise type a few letters of the folder name, pick it with ↑ ↓ and press Return.
-4. A toast at the top right lists the new names. **Undo** puts the file back; **Reveal** shows it in
-   Finder.
+
+![The chooser: a clear match for an Acme invoice is selected, with the new name below the list](images/chooser.png)
+
+4. A toast at the top right lists the new names. **Undo** puts the file back; **Reveal in Finder**
+   shows it.
+
+![The toast after the drop, with Undo and Reveal in Finder](images/toast.png)
 
 Esc, or a click outside the chooser, leaves the file where it was.
 

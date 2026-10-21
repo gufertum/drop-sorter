@@ -16,6 +16,20 @@ final class SortToast: NSObject {
     func show(title: String, lines: [String], isError: Bool, isWarning: Bool = false, actions: [Action]) {
         dismiss()
         duration = isError || isWarning ? 20 : 8
+        let panel = makePanel(title: title, lines: lines, isError: isError, isWarning: isWarning, actions: actions)
+        if let screen = NSScreen.main?.visibleFrame, let glow = panel.contentView as? GlowContainer {
+            // The visible toast keeps 16 pt from the top right corner; the glow margin lies outside.
+            let pad = 16 - glow.margin
+            let size = panel.frame.size
+            panel.setFrameOrigin(NSPoint(x: screen.maxX - size.width - pad, y: screen.maxY - size.height - pad))
+        }
+        panel.orderFrontRegardless()
+        self.panel = panel
+        startTimer()
+    }
+
+    /// The toast window, not yet shown (`show`, and the help images).
+    func makePanel(title: String, lines: [String], isError: Bool, isWarning: Bool = false, actions: [Action]) -> NSPanel {
         let width: CGFloat = 400
 
         let titleLabel = NSTextField(labelWithString: title)
@@ -78,14 +92,7 @@ final class SortToast: NSObject {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = glow
-        if let screen = NSScreen.main?.visibleFrame {
-            // The visible toast keeps 16 pt from the top right corner; the glow margin lies outside.
-            let pad = 16 - glow.margin
-            panel.setFrameOrigin(NSPoint(x: screen.maxX - size.width - pad, y: screen.maxY - size.height - pad))
-        }
-        panel.orderFrontRegardless()
-        self.panel = panel
-        startTimer()
+        return panel
     }
 
     private func startTimer() {

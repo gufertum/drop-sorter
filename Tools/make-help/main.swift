@@ -1,6 +1,7 @@
 import Foundation
 
-// make-help DOCS_DIR OUT_DIR: renders every docs/user/*.md to OUT_DIR/*.html for the app's offline help.
+// make-help DOCS_DIR OUT_DIR: renders every docs/user/*.md to OUT_DIR/*.html for the app's offline help
+// and copies DOCS_DIR/images to OUT_DIR/images.
 let args = CommandLine.arguments
 guard args.count == 3 else {
     FileHandle.standardError.write(Data("usage: make-help DOCS_DIR OUT_DIR\n".utf8))
@@ -24,11 +25,13 @@ pre code { padding: 0; background: none; }
 table { border-collapse: collapse; margin: 12px 0; display: block; overflow-x: auto; }
 th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
 th { background: var(--code); }
+figure { margin: 16px 0; } figure img { display: block; max-width: 100%; height: auto; }
 """
 
 do {
     try fm.createDirectory(at: out, withIntermediateDirectories: true)
     let pages = try fm.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil).filter { $0.pathExtension == "md" }
+    let hasDark = { (src: String) in fm.fileExists(atPath: docs.appendingPathComponent(Markdown.darkName(src)).path) }
     for page in pages.sorted(by: { $0.path < $1.path }) {
         let source = try String(contentsOf: page, encoding: .utf8)
         let name = page.deletingPathExtension().lastPathComponent
@@ -39,13 +42,21 @@ do {
         <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
         <title>\(Markdown.escape(title))</title><style>\(style)</style></head>
         <body><main>
-        \(nav)\(Markdown.html(source))
+        \(nav)\(Markdown.html(source, hasDarkVariant: hasDark))
         </main></body></html>
 
         """
         try html.write(to: out.appendingPathComponent(name + ".html"), atomically: true, encoding: .utf8)
     }
-    print("    \(pages.count) help pages")
+    let images = docs.appendingPathComponent("images", isDirectory: true)
+    var imageCount = 0
+    if fm.fileExists(atPath: images.path) {
+        let target = out.appendingPathComponent("images", isDirectory: true)
+        try? fm.removeItem(at: target)
+        try fm.copyItem(at: images, to: target)
+        imageCount = try fm.contentsOfDirectory(atPath: target.path).filter { $0.hasSuffix(".png") }.count
+    }
+    print("    \(pages.count) help pages, \(imageCount) images")
 } catch {
     FileHandle.standardError.write(Data("make-help: \(error.localizedDescription)\n".utf8))
     exit(1)

@@ -7,11 +7,21 @@ apps run on their own; Drop Sorter does not need to be running.
 Put a drop app where you need it, for example in an Inbox folder in Finder, so dropping on it sorts
 files with one move.
 
+![A drop app's icon: a dart board labelled with its folder, Invoices](images/drop-app-icon.png)
+
 ## Create one
 
-In **Settings › Drop Apps**, click **New…**, choose the target folder and where to put the app. Drop
-Sorter takes the pattern from its rename rule for that folder (no rule: names are kept), and draws an
-icon with the folder's name, so copies can be told apart.
+In **Settings › Drop Apps**, click **New…**:
+
+1. Choose the target folder.
+2. Choose the name and place of the app (suggested: `_move-to-<folder>.app`, usually in the folder you
+   sort from). Turn on **Copy instead of move** for an app that copies.
+
+Drop Sorter takes the pattern from its rename rule for that folder (no rule: names are kept), draws an
+icon with the folder's name, so copies can be told apart, adds the app to the list and shows it in
+Finder.
+
+![Settings, Drop Apps tab: two drop apps with their folder, target, version and status](images/settings-drop-apps.png)
 
 ## Change one
 

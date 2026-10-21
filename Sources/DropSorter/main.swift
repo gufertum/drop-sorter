@@ -158,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let id = e.id
         let moved = e.moves.map(\.destination)
-        toast.show(title: "\(e.mode.pastTense) \(plural(e.moves.count)) to \(e.display ?? e.folder) (via \(e.source))",
+        toast.show(title: "\(e.mode.pastTense) \(Self.plural(e.moves.count)) to \(e.display ?? e.folder) (via \(e.source))",
                    lines: moved.prefix(6).map { "→ " + $0.lastPathComponent }, isError: false,
                    actions: [.init(title: "Undo") { [weak self] in self?.undo(id: id) },
                              .init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(moved) }])
@@ -317,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if back.items.count > 6 { lines.append("… and \(back.items.count - 6) more") }
         lines += back.failed.map { "✗ \($0.name): \($0.reason)" }
         let failed = !back.failed.isEmpty
-        let done = back.mode == .copy ? "Moved \(plural(back.items.count)) of the copies to the Trash" : "Moved \(plural(back.items.count)) back"
+        let done = back.mode == .copy ? "Moved \(Self.plural(back.items.count)) of the copies to the Trash" : "Moved \(Self.plural(back.items.count)) back"
         let restored = back.items.map { URL(fileURLWithPath: $0.to) }
         toast.show(title: failed ? "Undo incomplete" : done, lines: lines, isError: failed,
                    actions: restored.isEmpty || back.mode == .copy ? [] : [.init(title: "Reveal") {
@@ -328,14 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showResult(_ o: SortOutcome) {
         let r = o.result
         if !r.identical.isEmpty { return showIdentical(o) }
-        var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
-        if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
-        lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
-        lines += extraLines(r)
-        let failed = !r.failures.isEmpty || !r.extraFailures.isEmpty
-        let title = r.failures.isEmpty
-            ? (o.display == SortService.trashName ? "Moved \(plural(r.moved.count)) to the Trash" : "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)")
-            : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
+        let (title, lines, failed) = Self.resultText(o)
         var actions: [SortToast.Action] = []
         if !r.moves.isEmpty {
             actions.append(.init(title: "Undo") { [weak self] in self?.undo(id: o.id) })
@@ -344,15 +337,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toast.show(title: title, lines: lines, isError: failed, actions: actions)
     }
 
+    /// Title and lines of the toast after a drop; also drawn for the help images.
+    static func resultText(_ o: SortOutcome) -> (title: String, lines: [String], failed: Bool) {
+        let r = o.result
+        var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
+        if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
+        lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
+        lines += extraLines(r)
+        let failed = !r.failures.isEmpty || !r.extraFailures.isEmpty
+        let title = r.failures.isEmpty
+            ? (o.display == SortService.trashName ? "Moved \(plural(r.moved.count)) to the Trash" : "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)")
+            : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
+        return (title, lines, failed)
+    }
+
     /// What happened in the "also copy to" folder, for the toasts.
-    private func extraLines(_ r: MoveResult) -> [String] {
+    private static func extraLines(_ r: MoveResult) -> [String] {
         guard let first = r.extraCopies.first?.destination ?? r.extraSkipped.first?.identicalTo else {
             return r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
         }
         let folder = first.deletingLastPathComponent().lastPathComponent
         var lines: [String] = []
-        if !r.extraCopies.isEmpty { lines.append("+ \(plural(r.extraCopies.count)) also copied to \(folder)") }
-        if !r.extraSkipped.isEmpty { lines.append("= \(plural(r.extraSkipped.count)) already in \(folder), not copied again") }
+        if !r.extraCopies.isEmpty { lines.append("+ \(Self.plural(r.extraCopies.count)) also copied to \(folder)") }
+        if !r.extraSkipped.isEmpty { lines.append("= \(Self.plural(r.extraSkipped.count)) already in \(folder), not copied again") }
         return lines + r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
     }
 
@@ -364,7 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var lines = twins.prefix(6).map { "= \($0.source.lastPathComponent) is identical to \($0.identicalTo!.lastPathComponent)" }
         if twins.count > 6 { lines.append("… and \(twins.count - 6) more") }
         let others = r.moves.count - twins.count
-        if others > 0 { lines.append("\(r.mode.pastTense) \(plural(others)) without a twin.") }
+        if others > 0 { lines.append("\(r.mode.pastTense) \(Self.plural(others)) without a twin.") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
         let title = "\(twins.count) identical file\(twins.count == 1 ? "" : "s") already in \(o.display)"
         toast.show(title: title, lines: lines, isError: false, isWarning: true, actions: [
@@ -377,7 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func deleteIdentical(_ o: SortOutcome) {
         do {
             let removed = try service.removeIdentical(id: o.id.uuidString)
-            toast.show(title: "Moved \(plural(removed.count)) to the Trash", lines: removed.prefix(6).map {
+            toast.show(title: "Moved \(Self.plural(removed.count)) to the Trash", lines: removed.prefix(6).map {
                 "✕ " + ($0.from as NSString).lastPathComponent + " (same as " + (($0.identicalTo ?? "") as NSString).lastPathComponent + ")"
             }, isError: false, actions: [])
         } catch let e as ServiceError where e == .staleUndo || e == .nothingToUndo {
@@ -496,7 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         exit(1)
     }
 
-    private func plural(_ n: Int) -> String { "\(n) item\(n == 1 ? "" : "s")" }
+    private static func plural(_ n: Int) -> String { "\(n) item\(n == 1 ? "" : "s")" }
 
     // MARK: Menus
 
@@ -564,6 +571,11 @@ extension AppDelegate: NSMenuItemValidation {
 }
 
 let app = NSApplication.shared
+if let flag = CommandLine.arguments.firstIndex(of: HelpImages.flag) {
+    // Hidden: draws the images for docs/user and exits (scripts/make-help-images.sh).
+    app.setActivationPolicy(.accessory)
+    HelpImages.main(output: CommandLine.arguments.dropFirst(flag + 1).first)
+}
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
