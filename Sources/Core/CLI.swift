@@ -3,7 +3,7 @@ import Foundation
 /// The `dropsorter` command line tool. Parsing and output live here (Foundation only), so tests can
 /// run whole commands; `Sources/CLI/main.swift` only wires stdout, stderr and the exit status.
 enum CLI {
-    static let version = "1.0.0"
+    static var version: String { AppVersion.version }
 
     /// Exit status: 0 ok, 1 done with failures, 2 usage or input error, 3 configuration error,
     /// 4 no clear suggestion for --auto, 5 nothing to undo.
@@ -96,7 +96,7 @@ enum CLI {
             return args.isEmpty ? Exit.usage.rawValue : Exit.ok.rawValue
         }
         if ["version", "--version"].contains(args[0]) {
-            out(version)
+            out(AppVersion.display)
             return Exit.ok.rawValue
         }
         let json = args.contains("--json")
@@ -134,7 +134,7 @@ enum CLI {
                 }
             case "drop-apps":
                 let r = try service.dropApps()
-                out(o.json ? try encode(r) : r.map { "\($0.name)\t\($0.state)\t\($0.mode?.rawValue ?? "-")\t\($0.target ?? "-")\t\($0.path)" }.joined(separator: "\n"))
+                out(o.json ? try encode(r) : r.map { "\($0.name)\t\($0.state)\t\($0.version ?? "-")\t\($0.mode?.rawValue ?? "-")\t\($0.target ?? "-")\t\($0.path)" }.joined(separator: "\n"))
             default:
                 throw ServiceError.invalidInput("Unknown command '\(command)'. Run 'dropsorter help'.")
             }

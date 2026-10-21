@@ -177,7 +177,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             l.font = .systemFont(ofSize: 12, weight: .semibold)
             return l
         }
-        Self.addColumns(dropTable, [("name", "App", 160.0, true), ("place", "Folder", 150.0, true), ("target", "Moves to", 160.0, true), ("status", "Status", 120.0, false)])
+        Self.addColumns(dropTable, [("name", "App", 150.0, true), ("place", "Folder", 140.0, true), ("target", "Moves to", 150.0, true), ("version", "Version", 60.0, false), ("status", "Status", 110.0, false)])
         dropTable.dataSource = self
         dropTable.delegate = self
         dropTable.usesAlternatingRowBackgroundColors = true
@@ -216,6 +216,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
             [heading("Startup"), loginCheck, loginNote],
             [heading("Learning"), historyRow],
             [heading("Command line"), cliRow],
+            [heading("About"), NSTextField(labelWithString: "Drop Sorter \(AppVersion.display)")],
             [heading("API"), apiCheck, apiRow,
              small("Sort, suggest, undo and read the configuration over HTTP on this Mac only. Every request needs the header \"Authorization: Bearer <token>\". The API cannot change settings. Same commands as dropsorter and its MCP server.")],
         ]
@@ -733,6 +734,7 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
         case "target":
             label.stringValue = (info.config?.target.map { DropAppManager.abbreviate(URL(fileURLWithPath: $0)) } ?? "—")
                 + (info.config?.mode == .copy ? "  (copies)" : "")
+        case "version": label.stringValue = info.version ?? "—"
         default:
             let (text, color) = DropAppManager.statusText(info)
             label.stringValue = text

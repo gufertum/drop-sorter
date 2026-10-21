@@ -16,6 +16,7 @@
 	<string>Drop Mover</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Both versions are set by build.sh from VERSION and the git commit count. -->
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.0</string>
 	<key>CFBundleVersion</key>

@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             beginSort(pendingOpen)
             pendingOpen = []
         }
-        NSLog("DropSorter: started, config %@", configStore.activeURL?.path ?? "(none yet)")
+        NSLog("DropSorter: started %@, config %@", AppVersion.display, configStore.activeURL?.path ?? "(none yet)")
     }
 
     /// Launching the running app again (Spotlight, Finder, `open -a`) pins the shelf.
@@ -499,6 +499,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(withTitle: "Settings…", action: #selector(showSettings as () -> Void), keyEquivalent: "").target = self
         m.addItem(withTitle: "Open Configuration File", action: #selector(openConfig), keyEquivalent: "").target = self
         m.addItem(.separator())
+        m.addItem(withTitle: "Drop Sorter \(AppVersion.display)", action: nil, keyEquivalent: "")  // no action: shown disabled
         m.addItem(withTitle: "Quit Drop Sorter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         return m
     }

@@ -1,8 +1,9 @@
 import Foundation
 
 /// A fake app bundle: Info.plist with `id`, an executable with `binary` as content.
-private func makeBundle(_ url: URL, id: String, binary: String, config: String? = nil) throws {
-    let plist: [String: Any] = ["CFBundleIdentifier": id, "CFBundleExecutable": "DropMover", "CFBundlePackageType": "APPL"]
+private func makeBundle(_ url: URL, id: String, binary: String, config: String? = nil, version: String? = nil) throws {
+    var plist: [String: Any] = ["CFBundleIdentifier": id, "CFBundleExecutable": "DropMover", "CFBundlePackageType": "APPL"]
+    if let version { plist["CFBundleShortVersionString"] = version }
     try touch(url.appendingPathComponent("Contents/MacOS/DropMover"), binary)
     try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         .write(to: url.appendingPathComponent("Contents/Info.plist"))
@@ -15,7 +16,7 @@ func dropAppTests() throws {
     let root = try makeTempDir("dropapps")
     defer { try? fm.removeItem(at: root) }
     let template = root.appendingPathComponent("Template/DropMoverTemplate")
-    try makeBundle(template, id: DropAppFactory.bundleID, binary: "v2")
+    try makeBundle(template, id: DropAppFactory.bundleID, binary: "v2", version: "2.0.0")
     let docs = root.appendingPathComponent("Documents")
     let target = root.appendingPathComponent("Archive")
     try fm.createDirectory(at: target, withIntermediateDirectories: true)
@@ -36,6 +37,7 @@ func dropAppTests() throws {
     eq(created.state, .current)
     eq(created.config, cfg)
     eq(created.name, "_archive")
+    eq(created.version, "2.0.0")
     check(!fm.fileExists(atPath: app.deletingLastPathComponent().appendingPathComponent("._archive.app.dropsorter-new").path), "no staging left")
 
     func createError(_ url: URL, _ c: DropConfig) -> DropAppError? {
@@ -56,14 +58,17 @@ func dropAppTests() throws {
     try makeBundle(legacy, id: "io.schaedler.dropmover", binary: "v1", config: #"{"target":"/x","pattern":"{date}_{name}{ext}"}"#)
     try touch(legacy.appendingPathComponent("Icon\r"))
     let outdated = docs.appendingPathComponent("Tickets/_old.app")
-    try makeBundle(outdated, id: DropAppFactory.bundleID, binary: "v1", config: #"{"target":"/y"}"#)
+    try makeBundle(outdated, id: DropAppFactory.bundleID, binary: "v1", config: #"{"target":"/y"}"#, version: "2.0.0")
     let other = docs.appendingPathComponent("Other.app")
     try makeBundle(other, id: "com.example.other", binary: "x")
     try makeBundle(docs.appendingPathComponent(".hidden/Hidden.app"), id: DropAppFactory.bundleID, binary: "v2")
 
     eq(DropAppFactory.find(in: [docs]).map(\.lastPathComponent), ["_archive.app", "_archiviere-tickets.app", "_old.app"])
     eq(DropAppFactory.inspect(legacy, template: template).state, .legacy)
+    // Same version string, different executable: still outdated (the version is only shown).
     eq(DropAppFactory.inspect(outdated, template: template).state, .outdated)
+    eq(DropAppFactory.inspect(outdated, template: template).version, "2.0.0")
+    eq(DropAppFactory.inspect(legacy, template: template).version, nil)
     eq(DropAppFactory.inspect(other, template: template).state, .foreign)
     eq(DropAppFactory.inspect(docs.appendingPathComponent("gone.app"), template: template).state, .missing)
     check(DropAppFactory.inspect(legacy, template: template).needsUpdate, "legacy needs adopting")
