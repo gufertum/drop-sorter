@@ -3,7 +3,7 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
-## [1.0.0] - unreleased
+## [1.0.0] - 2026-10-21
 
 First release of Drop Sorter, with Drop Mover moved in from `lab/drop-mover`.
 
