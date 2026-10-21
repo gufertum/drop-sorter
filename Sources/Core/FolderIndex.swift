@@ -27,28 +27,53 @@ enum FolderIndex {
         let ids = targets.map { $0.url.standardizedFileURL.path }
         let labels = ShelfLabels.labels(ids)
         let excluded = exclude.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
-        var seen = Set<String>()
-        var entries: [FolderEntry] = []
-        var missing: [String] = []
-        for ((root, subfolders), (id, label)) in zip(targets, zip(ids, labels)) {
+        // The roots are walked in parallel: most of the time is spent waiting for the file system.
+        enum RootWalk { case missing, excluded, walked(Result<([String], [String: [String]]), Error>) }
+        let walks = parallelMap(Array(zip(targets, ids))) { target, id -> RootWalk in
             var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: id, isDirectory: &isDir), isDir.boolValue else {
+            guard fm.fileExists(atPath: id, isDirectory: &isDir), isDir.boolValue else { return .missing }
+            if excluded.contains(where: { id == $0 || id.hasPrefix($0 + "/") }) { return .excluded }
+            return .walked(Result {
+                try walk(target.url, recursive: target.subfolders, exclude: excluded.compactMap { ex in
+                    ex.hasPrefix(id + "/") ? String(ex.dropFirst(id.count + 1)) : nil
+                }, fileManager: fm)
+            })
+        }
+        var seen = Set<String>()
+        var found: [(path: String, display: String, files: [String])] = []
+        var missing: [String] = []
+        for ((id, label), rootWalk) in zip(zip(ids, labels), walks) {
+            let (folders, files): ([String], [String: [String]])
+            switch rootWalk {
+            case .missing:
                 Log.info("target folder not found: \(id)")
                 missing.append(id)
                 continue
+            case .excluded: continue
+            case .walked(let result): (folders, files) = try result.get()
             }
-            if excluded.contains(where: { id == $0 || id.hasPrefix($0 + "/") }) { continue }
-            let (folders, files) = try walk(root, recursive: subfolders, exclude: excluded.compactMap { ex in
-                ex.hasPrefix(id + "/") ? String(ex.dropFirst(id.count + 1)) : nil
-            }, fileManager: fm)
             for rel in [""] + folders {
                 let full = rel.isEmpty ? id : id + "/" + rel
                 guard seen.insert(full).inserted else { continue }  // nested or repeated targets
-                entries.append(FolderEntry(path: full, display: rel.isEmpty ? label : label + "/" + rel, files: files[rel] ?? []))
+                found.append((full, rel.isEmpty ? label : label + "/" + rel, files[rel] ?? []))
             }
         }
-        if entries.isEmpty, let first = missing.first { throw FolderIndexError.baseNotFound(first) }
-        return entries
+        if found.isEmpty, let first = missing.first { throw FolderIndexError.baseNotFound(first) }
+        // Tokenizing names is the other half of the time; it is pure CPU, so it is spread over the cores.
+        return parallelMap(found) { FolderEntry(path: $0.path, display: $0.display, files: $0.files) }
+    }
+
+    /// `transform` applied to every element on all cores, results in the order of `items`.
+    static func parallelMap<T, R>(_ items: [T], _ transform: (T) -> R) -> [R] {
+        guard items.count > 1 else { return items.map(transform) }
+        var results = [R?](repeating: nil, count: items.count)
+        let chunks = min(items.count, ProcessInfo.processInfo.activeProcessorCount * 4)
+        results.withUnsafeMutableBufferPointer { out in
+            DispatchQueue.concurrentPerform(iterations: chunks) { c in
+                for i in stride(from: c, to: items.count, by: chunks) { out[i] = transform(items[i]) }
+            }
+        }
+        return results.map { $0! }
     }
 
     /// Single-folder form (tests, tools): the subfolders of `base` with paths relative to it, without

@@ -13,9 +13,13 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     private let verdict = NSTextField(labelWithString: "")
     private let rename = NSTextField(labelWithString: "")
     private var finished = false
+    /// Opened before the folder scan is done: the list fills in with `show(_:)`, Return waits for it.
+    private var scanning: Bool
 
-    init(model: ChooserModel, mode: TransferMode = .move, renamePattern: @escaping (String) -> String?) {
-        self.model = model
+    /// Without `model` the chooser opens at once and shows "Scanning…" until `show(_:)` hands it the folders.
+    init(items: [DropItem], model: ChooserModel? = nil, mode: TransferMode = .move, renamePattern: @escaping (String) -> String?) {
+        self.model = model ?? ChooserModel(items: items, suggestion: Suggestion(ranked: [], preselected: nil))
+        scanning = model == nil
         self.mode = mode
         self.renamePattern = renamePattern
         super.init(contentRect: NSRect(x: 0, y: 0, width: 600, height: 440),
@@ -32,6 +36,19 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     }
 
     override var canBecomeKey: Bool { true }
+
+    /// The scanned folders arrive; what the user typed meanwhile still filters them.
+    func show(_ model: ChooserModel) {
+        var m = model
+        if !field.stringValue.isEmpty { m.setQuery(field.stringValue) }
+        self.model = m
+        scanning = false
+        setVerdict()
+        reload()
+    }
+
+    /// Closes without touching the files, e.g. when the scan failed.
+    func dismiss() { finish(nil) }
 
     func present() {
         let screen = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
@@ -124,6 +141,9 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         if let override {
             verdict.stringValue = override
             verdict.textColor = .systemOrange
+        } else if scanning {
+            verdict.stringValue = "Scanning the target folders…"
+            verdict.textColor = .secondaryLabelColor
         } else if let p = model.suggestion.preselected {
             verdict.stringValue = "Clear match: \(ranked.first { $0.path == p }?.folder.display ?? p)"
             verdict.textColor = .systemGreen
@@ -185,6 +205,11 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     }
 
     private func commit() {
+        guard !scanning else {
+            setVerdict("Still scanning the target folders. Press ↵ again in a moment.")
+            NSSound.beep()
+            return
+        }
         guard let path = model.selected?.path else {
             setVerdict("Pick a folder first: use ↓ or type a few letters.")
             NSSound.beep()

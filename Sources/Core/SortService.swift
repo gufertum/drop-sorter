@@ -264,12 +264,14 @@ final class SortService {
     /// `anyFolder`: an existing folder outside the targets is fine too (the app's favorite spots). The
     /// CLI, MCP and REST never set it: they only reach the target folders.
     /// `alsoCopyTo`: a plain copy of each item there as well (a target folder; with `anyFolder` any folder).
+    /// `scanned`: the target folders as the caller just listed them (the app's chooser), so they are not
+    /// scanned a second time; the chosen folder must still exist.
     func perform(_ urls: [URL], into folder: String?, mode: TransferMode, identical: IdenticalPolicy = .keep,
                  alsoCopyTo: String? = nil, anyFolder: Bool = false, dryRun: Bool = false, source: String,
-                 now: Date = Date()) throws -> SortOutcome {
+                 scanned: [FolderEntry]? = nil, now: Date = Date()) throws -> SortOutcome {
         guard !urls.isEmpty else { throw ServiceError.invalidInput("Give at least one file or folder.") }
         let config = try config()
-        let folders = try targetFolders(config)
+        let folders = try scanned ?? targetFolders(config)
         let entry: FolderEntry
         if let folder {
             if anyFolder, let found = try? Self.resolve(folder, in: folders) {
@@ -290,6 +292,11 @@ final class SortService {
             entry = e
         }
         let target = entry.path
+        var isTargetDir: ObjCBool = false
+        // Renamed or deleted since the list was made: nothing moves (Mover would not create it either).
+        guard FileManager.default.fileExists(atPath: target, isDirectory: &isTargetDir), isTargetDir.boolValue else {
+            throw ServiceError.notFound(target)
+        }
         let targetURL = URL(fileURLWithPath: target, isDirectory: true)
         let extraURL: URL? = try alsoCopyTo.map { extra in
             if anyFolder {

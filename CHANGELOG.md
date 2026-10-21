@@ -6,6 +6,7 @@ Versions follow [semver](https://semver.org). The version lives in `VERSION`; ea
 ## [1.0.1] - unreleased
 
 - #31 Images in the help, rendered by the app (light and dark); help pages reviewed against 1.0.0
+- #27 Faster chooser: opens at once, folders scanned in the background and in parallel; Return closes it at once
 
 ## [1.0.0] - 2026-10-21
 

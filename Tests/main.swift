@@ -8,6 +8,7 @@ let suites: [(String, () throws -> Void)] = [
     ("NameShape", nameShapeTests),
     ("SimilarFiles", similarFilesTests),
     ("FolderIndex", folderIndexTests),
+    ("Prefetch", prefetchTests),
     ("RelativePath", relativePathTests),
     ("Targets", targetsTests),
     ("History", historyTests),

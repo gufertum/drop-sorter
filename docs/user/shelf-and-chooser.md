@@ -57,6 +57,11 @@ Dropping on the main spot opens the chooser. It shows the dropped items, a line 
 A click outside the chooser also cancels. When the suggestion is not clear, nothing is selected, so a
 blind Return never puts files in the wrong place.
 
+With many folders the chooser may open with "Scanning the target folders…" for a moment. You can
+already type; the list fills in when the scan is done, and Return waits for it. Drop Sorter starts the
+scan as soon as you drag over the shelf, so usually the list is there when you drop. After Return the
+chooser closes at once; the move runs in the background and the message follows when it is done.
+
 ## Favorites
 
 Favorites are folders you use often. Each gets its own coloured spot on the shelf: dropping there moves

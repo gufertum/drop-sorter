@@ -66,8 +66,12 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - **Folder ids are full paths** (`SorterConfig.folderID`); people see `FolderEntry.display` (target name +
   path inside). Config entries are full paths (`~/` allowed); the old `base` key is converted on load
   (`legacyBase`), history keys too (`History.rebase`). Never reintroduce base-relative paths.
-- The target folders are rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
-  watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
+- The target folders are scanned fresh for every drop, in parallel per target and per entry (15,000
+  folders / 115,000 files: 2.2 s -> 0.8 s), so there is no FSEvents watcher. The app starts the scan in the
+  background when a drag enters the shelf (`FolderPrefetch`, reused only for the same targets and at most
+  30 s old); the chooser opens at once and fills in. Return hands the chooser's list to
+  `SortService.perform(scanned:)`, which runs on the app's work queue, never on the main thread.
+  The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
 - The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
 - **Index performance**: keep per-file work cheap in `FolderIndex.scan` (byte-wise path math against
   the `realpath` spelling of the root, ASCII fast path in `Tokenizer.fold`). Measure with a large

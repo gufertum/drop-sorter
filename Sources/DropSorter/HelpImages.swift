@@ -187,7 +187,7 @@ enum HelpImages {
 
         func chooser() -> NSView {
             let config = self.config
-            let panel = ChooserPanel(model: model, mode: .move) { config.renamePattern(forTarget: $0) }
+            let panel = ChooserPanel(items: model.items, model: model, mode: .move) { config.renamePattern(forTarget: $0) }
             return panel.contentView!
         }
 
