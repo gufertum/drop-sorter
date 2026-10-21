@@ -38,7 +38,7 @@ short welcome and asks for your target folders; the shelf flashes in the accent 
 so it is easy to find.
 
 - **Shelf**: pops up at the bottom right of the screen while Finder is the active app and slides away 0.4 s
-  after another app becomes active. Launching Drop Sorter again pins it until you click ✕.
+  after another app becomes active. Launching Drop Sorter (again) shows it until another app than Finder gets the focus, or until you click ✕.
 - **Main spot**: opens the chooser. Folders with a rename rule show "rename" and a preview of the new
   names. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
   the files where they are, ⇥ steps into the selected folder, ↑↓ select.
