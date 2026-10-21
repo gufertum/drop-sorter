@@ -92,6 +92,10 @@ struct SortReport: Codable, Equatable {
     /// Left in place because the target already holds the same content (`identical: skip`).
     let skipped: [ItemReport]
     let failed: [FailureReport]
+    /// Plain copies in the `alsoCopyTo` folder; `extraSkipped`: not copied there, identical file exists.
+    var extraCopies: [ItemReport] = []
+    var extraSkipped: [ItemReport] = []
+    var extraFailed: [FailureReport] = []
 }
 
 struct UndoReport: Codable, Equatable {
@@ -235,13 +239,16 @@ final class SortService {
     /// Moves or copies `paths` (absolute, existing) into `folder` (short name or path of a target folder),
     /// or into the clear suggestion when `folder` is nil. `dryRun` reports the names without touching anything.
     func sort(_ paths: [String], into folder: String?, mode: TransferMode = .move, identical: IdenticalPolicy = .keep,
-              dryRun: Bool = false, source: String = "cli", now: Date = Date()) throws -> SortReport {
+              alsoCopyTo: String? = nil, dryRun: Bool = false, source: String = "cli", now: Date = Date()) throws -> SortReport {
         let outcome = try perform(paths.map(Self.existingURL), into: folder, mode: mode, identical: identical,
-                                  dryRun: dryRun, source: source, now: now)
+                                  alsoCopyTo: alsoCopyTo, dryRun: dryRun, source: source, now: now)
         let item = { (m: Move) in ItemReport(from: m.source.path, to: m.destination.path, identicalTo: m.identicalTo?.path) }
+        let r = outcome.result
         return SortReport(id: outcome.id.uuidString, mode: mode, folder: outcome.display, path: outcome.folder, dryRun: dryRun,
-                          items: outcome.result.moves.map(item), skipped: outcome.result.skipped.map(item),
-                          failed: outcome.result.failures.map { FailureReport(name: $0.name, reason: $0.reason) })
+                          items: r.moves.map(item), skipped: r.skipped.map(item),
+                          failed: r.failures.map { FailureReport(name: $0.name, reason: $0.reason) },
+                          extraCopies: r.extraCopies.map(item), extraSkipped: r.extraSkipped.map(item),
+                          extraFailed: r.extraFailures.map { FailureReport(name: $0.name, reason: $0.reason) })
     }
 
     private static func existingURL(_ path: String) throws -> URL {
@@ -254,8 +261,10 @@ final class SortService {
     /// The shared implementation; the app calls it with the URLs from a drop.
     /// `anyFolder`: an existing folder outside the targets is fine too (the app's favorite spots). The
     /// CLI, MCP and REST never set it: they only reach the target folders.
+    /// `alsoCopyTo`: a plain copy of each item there as well (a target folder; with `anyFolder` any folder).
     func perform(_ urls: [URL], into folder: String?, mode: TransferMode, identical: IdenticalPolicy = .keep,
-                 anyFolder: Bool = false, dryRun: Bool = false, source: String, now: Date = Date()) throws -> SortOutcome {
+                 alsoCopyTo: String? = nil, anyFolder: Bool = false, dryRun: Bool = false, source: String,
+                 now: Date = Date()) throws -> SortOutcome {
         guard !urls.isEmpty else { throw ServiceError.invalidInput("Give at least one file or folder.") }
         let config = try config()
         let folders = try targetFolders(config)
@@ -280,6 +289,16 @@ final class SortService {
         }
         let target = entry.path
         let targetURL = URL(fileURLWithPath: target, isDirectory: true)
+        let extraURL: URL? = try alsoCopyTo.map { extra in
+            if anyFolder {
+                let id = SorterConfig.folderID(extra)
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: id, isDirectory: &isDir), isDir.boolValue else { throw ServiceError.notFound(id) }
+                return URL(fileURLWithPath: id, isDirectory: true)
+            }
+            return URL(fileURLWithPath: try Self.resolve(extra, in: folders).path, isDirectory: true)
+        }
+        if let extraURL, extraURL.path == target { throw ServiceError.invalidInput("alsoCopyTo is the target folder itself.") }
         if dryRun {
             let pattern = config.renamePattern(forTarget: target)
             var result = MoveResult(mode: mode)
@@ -300,6 +319,19 @@ final class SortService {
                     result.failures.append((u.lastPathComponent, error.localizedDescription))
                 }
             }
+            if let extraURL {
+                for m in result.moves {
+                    let isDir = (try? m.source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                    if !isDir, let twin = Identical.find(m.source, in: extraURL) {
+                        result.extraSkipped.append(Move(source: m.destination, destination: twin, identicalTo: twin))
+                    } else {
+                        let dest = Renamer.uniqueDestination(in: extraURL, name: m.source.lastPathComponent, isDirectory: isDir) {
+                            FileManager.default.fileExists(atPath: $0.path)
+                        }
+                        result.extraCopies.append(Move(source: m.destination, destination: dest))
+                    }
+                }
+            }
             return SortOutcome(folder: target, target: targetURL, result: result, display: entry.display)
         }
         return try lock.withLock {
@@ -308,7 +340,7 @@ final class SortService {
             // Forget folders that were renamed or deleted since.
             history.prune(keeping: Set(folders.map(\.path)))
             let outcome = Sorter.sort(urls, into: target, display: entry.display, config: config, mode: mode,
-                                      identical: identical, history: &history, now: now)
+                                      identical: identical, alsoCopyTo: extraURL, history: &history, now: now)
             try historyStore.save(history)
             // An operation that changed nothing leaves the previous one undoable.
             if !outcome.result.moves.isEmpty { try journalStore.save(JournalEntry(outcome, source: source, date: now)) }
@@ -366,6 +398,7 @@ final class SortService {
             try historyStore.save(history)
             var rest = JournalEntry(id: entry.id, date: entry.date, folder: entry.folder, mode: entry.mode, moves: kept, source: entry.source)
             rest.display = entry.display
+            rest.extraCopies = entry.extraCopies
             try journalStore.save(kept.isEmpty ? nil : rest)
             return removed
         }
@@ -387,8 +420,8 @@ final class SortService {
             try historyStore.save(history)
             try journalStore.save(nil)
             return UndoReport(id: entry.id.uuidString, mode: entry.mode, folder: entry.display ?? entry.folder,
-                              items: back.moves.map { ItemReport(from: $0.source.path, to: $0.destination.path) },
-                              failed: back.failures.map { FailureReport(name: $0.name, reason: $0.reason) })
+                              items: (back.extraCopies + back.moves).map { ItemReport(from: $0.source.path, to: $0.destination.path) },
+                              failed: (back.extraFailures + back.failures).map { FailureReport(name: $0.name, reason: $0.reason) })
         }
     }
 }

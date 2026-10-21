@@ -25,6 +25,11 @@ struct MoveResult {
     var moved: [URL] { moves.map(\.destination) }
     /// Moved items whose content already existed in the target.
     var identical: [Move] { moves.filter { $0.identicalTo != nil } }
+    /// Plain copies in the "also copy to" folder: item in the target -> its copy.
+    var extraCopies: [Move] = []
+    /// Not copied there because that folder already had the same content (identicalTo).
+    var extraSkipped: [Move] = []
+    var extraFailures: [(name: String, reason: String)] = []
 }
 
 enum MoveError: LocalizedError {
@@ -50,8 +55,9 @@ enum Mover {
     /// they keep their name. Folders go with their content; only the top-level folder is renamed.
     /// Files whose content is already in `target` (by hash, whatever the name) are reported in
     /// `identicalTo`, and with `.skip` left where they are.
+    /// With `alsoCopyTo`, every item that arrived also gets a plain copy there (see `copyExtras`).
     static func move(_ urls: [URL], to target: URL, pattern: String?, mode: TransferMode = .move,
-                     identical: IdenticalPolicy = .keep, now: Date = Date(),
+                     identical: IdenticalPolicy = .keep, alsoCopyTo: URL? = nil, now: Date = Date(),
                      fileManager fm: FileManager = .default) -> MoveResult {
         var result = MoveResult(mode: mode)
         let realTarget = target.standardizedFileURL.resolvingSymlinksInPath().path
@@ -83,7 +89,40 @@ enum Mover {
             }
         }
         Log.info(String(format: "%@ %ld item(s) to '%@', %ld failure(s)", mode.pastTense.lowercased(), result.moves.count, target.path, result.failures.count))
+        if let alsoCopyTo { copyExtras(&result, to: alsoCopyTo, target: target, fileManager: fm) }
         return result
+    }
+
+    /// "Also copy to": a plain copy of each arrived item in `folder`, under its original name. No rename
+    /// rule, no further copies, nothing learned, so chains and cycles cannot happen. Never overwrites
+    /// (-2 suffix); an item whose content is already there is not copied again. Failures here do not
+    /// touch the main move.
+    static func copyExtras(_ result: inout MoveResult, to folder: URL, target: URL, fileManager fm: FileManager = .default) {
+        let extra = folder.standardizedFileURL.resolvingSymlinksInPath().path
+        guard extra != target.standardizedFileURL.resolvingSymlinksInPath().path else {
+            Log.info("also-copy-to folder is the target itself; no extra copies")
+            return
+        }
+        for m in result.moves {
+            let name = m.source.lastPathComponent
+            do {
+                let item = m.destination.standardizedFileURL.resolvingSymlinksInPath().path
+                if extra == item || extra.hasPrefix(item + "/") { throw MoveError.intoItself }
+                let isDir = (try? m.destination.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                if !isDir, let twin = Identical.find(m.destination, in: folder, fileManager: fm) {
+                    result.extraSkipped.append(Move(source: m.destination, destination: twin, identicalTo: twin))
+                    continue
+                }
+                let dest = Renamer.uniqueDestination(in: folder, name: name, isDirectory: isDir) { fm.fileExists(atPath: $0.path) }
+                try fm.copyItem(at: m.destination, to: dest)
+                result.extraCopies.append(Move(source: m.destination, destination: dest))
+            } catch {
+                Log.info(String(format: "extra copy of '%@' to '%@' failed: %@", name, folder.path, error.localizedDescription))
+                result.extraFailures.append((name, error.localizedDescription))
+            }
+        }
+        Log.info(String(format: "extra copies in '%@': %ld, %ld already there, %ld failure(s)", folder.path,
+                        result.extraCopies.count, result.extraSkipped.count, result.extraFailures.count))
     }
 
     /// Reverses an earlier result. Moves go back to their source folders (with the usual "-2" suffix if
@@ -92,6 +131,16 @@ enum Mover {
     static func undo(_ previous: MoveResult, fileManager fm: FileManager = .default,
                      moveToTrash: (URL) throws -> URL? = Mover.trash) -> MoveResult {
         var result = MoveResult(mode: previous.mode)
+        // Extra copies first: they are plain copies, so they go to the Trash.
+        for c in previous.extraCopies.reversed() {
+            do {
+                let gone = try moveToTrash(c.destination)
+                result.extraCopies.append(Move(source: c.destination, destination: gone ?? c.destination))
+            } catch {
+                Log.info(String(format: "undo failed for extra copy '%@': %@", c.destination.path, error.localizedDescription))
+                result.extraFailures.append((c.destination.lastPathComponent, error.localizedDescription))
+            }
+        }
         if previous.mode == .copy {
             for m in previous.moves.reversed() {
                 do {

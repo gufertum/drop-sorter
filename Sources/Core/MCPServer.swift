@@ -37,7 +37,8 @@ final class MCPServer {
                           "auto": ["type": "boolean", "description": "Use the clear suggestion instead of 'folder'."],
                           "mode": ["type": "string", "enum": ["move", "copy"], "description": "Default move."],
                           "identical": ["type": "string", "enum": ["keep", "skip"], "description": "Items whose content already exists in the target folder (by hash): keep = move/copy anyway under a distinct name and report identicalTo (default); skip = leave them in place."],
-                          "dry_run": ["type": "boolean", "description": "Only report the resulting names."]],
+                          "dry_run": ["type": "boolean", "description": "Only report the resulting names."],
+                          "also_copy_to": ["type": "string", "description": "Optional: also put a plain copy of each item into this target folder (no rename, no further copies)."]],
              required: ["paths"], readOnly: false, destructive: false),
         Tool(name: "undo_last",
              description: "Undo the most recent operation (from the app, CLI, MCP or REST), once. Moves go back; copies go to the Trash. With 'id', only if that operation is still the most recent one.",
@@ -124,6 +125,7 @@ final class MCPServer {
                     throw ServiceError.invalidInput("identical must be 'keep' or 'skip'.")
                 }
                 value = try service.sort(try strings(args, "paths"), into: folder, mode: mode, identical: identical,
+                                         alsoCopyTo: try string(args, "also_copy_to"),
                                          dryRun: try bool(args, "dry_run") ?? false, source: "mcp")
             case "undo_last":
                 value = try service.undo(id: try string(args, "id"))

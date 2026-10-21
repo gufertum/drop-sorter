@@ -43,6 +43,10 @@ so it is easy to find.
   names. ↵ moves into the selected folder, Esc (or clicking elsewhere) leaves
   the files where they are, ⇥ steps into the selected folder, ↑↓ select.
 - **Favorite spots** (★): dropping there moves at once. The toast offers Undo and Reveal in Finder.
+- **Also copy to** (per favorite in Settings › Shelf, per drop app in its window, `--also-copy-to` /
+  `alsoCopyTo` in CLI, MCP and REST): a plain copy of every dropped item goes into a second folder as
+  well, under its original name, with no rename rule and no further copies (no chains or cycles),
+  never overwriting; identical files there are not copied again. Undo also removes these copies.
 - **Trash spot** (bottom of the shelf, Settings › Shelf turns it off): moves items to the Trash at
   once; Undo puts them back where they were.
 - **Copy instead of move**: hold ⌥ while dropping (the cursor shows the green +), like in Finder. A

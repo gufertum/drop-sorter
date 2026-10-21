@@ -22,6 +22,7 @@ let suites: [(String, () throws -> Void)] = [
     ("Identical", identicalTests),
     ("IdenticalService", identicalServiceTests),
     ("Trash", trashTests),
+    ("AlsoCopy", alsoCopyTests),
     ("DropApps", dropAppTests),
     ("CLI", cliTests),
     ("MCP", mcpTests),

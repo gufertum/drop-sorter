@@ -10,6 +10,8 @@ struct JournalEntry: Codable, Equatable {
     var display: String? = nil
     let mode: TransferMode
     let moves: [Move]
+    /// Plain copies in an "also copy to" folder; Undo moves them to the Trash.
+    var extraCopies: [Move]? = nil
     /// "app", "cli", "mcp", "api".
     let source: String
 
@@ -29,10 +31,15 @@ struct JournalEntry: Codable, Equatable {
         display = outcome.display
         mode = outcome.result.mode
         moves = outcome.result.moves
+        extraCopies = outcome.result.extraCopies.isEmpty ? nil : outcome.result.extraCopies
         self.source = source
     }
 
-    var result: MoveResult { MoveResult(mode: mode, moves: moves, failures: []) }
+    var result: MoveResult {
+        var r = MoveResult(mode: mode, moves: moves, failures: [])
+        r.extraCopies = extraCopies ?? []
+        return r
+    }
 }
 
 /// `{"operation": …}` for MCP and REST; always has the key, `null` when there is nothing to undo.

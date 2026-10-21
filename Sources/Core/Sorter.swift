@@ -33,10 +33,10 @@ enum Sorter {
     /// Moves `urls` into `folder` (its full path), renamed by the rename rule that covers the folder, if
     /// any. Each moved item is recorded in `history` under the words of its original name.
     static func sort(_ urls: [URL], into folder: String, display: String? = nil, config: SorterConfig,
-                     mode: TransferMode = .move, identical: IdenticalPolicy = .keep, history: inout History,
-                     now: Date = Date()) -> SortOutcome {
+                     mode: TransferMode = .move, identical: IdenticalPolicy = .keep, alsoCopyTo: URL? = nil,
+                     history: inout History, now: Date = Date()) -> SortOutcome {
         let target = URL(fileURLWithPath: folder, isDirectory: true)
-        let result = Mover.move(urls, to: target, pattern: config.renamePattern(forTarget: folder), mode: mode, identical: identical, now: now)
+        let result = Mover.move(urls, to: target, pattern: config.renamePattern(forTarget: folder), mode: mode, identical: identical, alsoCopyTo: alsoCopyTo, now: now)
         for m in result.moves { history.record(tokens: words(m.source), folder: folder) }
         return SortOutcome(folder: folder, target: target, result: result, display: display)
     }

@@ -6,6 +6,8 @@ struct DropConfig: Codable, Equatable {
     var pattern: String = Renamer.defaultPattern
     /// Copy instead of move (e.g. a backup drop target).
     var mode: TransferMode = .move
+    /// A plain copy of every dropped item goes here as well.
+    var alsoCopyTo: String?
 }
 
 // In an extension to keep the memberwise initializer; a missing pattern takes the default.
@@ -15,6 +17,7 @@ extension DropConfig {
         target = try c.decodeIfPresent(String.self, forKey: .target)
         pattern = try c.decodeIfPresent(String.self, forKey: .pattern) ?? Renamer.defaultPattern
         mode = try c.decodeIfPresent(TransferMode.self, forKey: .mode) ?? .move
+        alsoCopyTo = try c.decodeIfPresent(String.self, forKey: .alsoCopyTo)
     }
 }
 

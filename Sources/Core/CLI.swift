@@ -30,6 +30,7 @@ enum CLI {
       --json        machine-readable output
       --dry-run     move/copy: show the new names without touching anything
       --skip-identical  move/copy: leave files whose content is already in the target folder
+      --also-copy-to FOLDER  move/copy: also put a plain copy of each item into FOLDER (a target folder)
       --limit N     suggest: number of candidates (default 8)
 
     FOLDER is a short name as `dropsorter folders` prints it (e.g. "Files/30 Areas/Finance") or a full
@@ -42,6 +43,7 @@ enum CLI {
         var json = false
         var dryRun = false
         var skipIdentical = false
+        var alsoCopyTo: String?
         var auto = false
         var to: String?
         var query = ""
@@ -65,6 +67,7 @@ enum CLI {
             case "--json": o.json = true
             case "--dry-run", "-n": o.dryRun = true
             case "--skip-identical": o.skipIdentical = true
+            case "--also-copy-to": o.alsoCopyTo = try value(a)
             case "--auto": o.auto = true
             case "--to", "-t": o.to = try value(a)
             case "-q", "--query": o.query = try value(a)
@@ -110,7 +113,8 @@ enum CLI {
                 guard (o.to != nil) != o.auto else { throw ServiceError.invalidInput("Give either --to FOLDER or --auto.") }
                 guard !o.positional.isEmpty else { throw ServiceError.invalidInput("Give the files or folders to \(command).") }
                 let r = try service.sort(o.positional, into: o.to, mode: command == "copy" ? .copy : .move,
-                                         identical: o.skipIdentical ? .skip : .keep, dryRun: o.dryRun, source: "cli")
+                                         identical: o.skipIdentical ? .skip : .keep, alsoCopyTo: o.alsoCopyTo,
+                                         dryRun: o.dryRun, source: "cli")
                 out(o.json ? try encode(r) : text(r))
                 return r.failed.isEmpty ? Exit.ok.rawValue : Exit.partial.rawValue
             case "undo":
@@ -185,6 +189,9 @@ enum CLI {
             "  \(($0.from as NSString).lastPathComponent) → \($0.to)"
                 + ($0.identicalTo.map { "  (identical to existing \(($0 as NSString).lastPathComponent))" } ?? "")
         }
+        lines += r.extraCopies.map { "  + copy: \($0.to)" }
+        lines += r.extraSkipped.map { "  = no extra copy of \(($0.from as NSString).lastPathComponent): identical to \($0.identicalTo ?? "?")" }
+        lines += r.extraFailed.map { "  ✗ extra copy of \($0.name): \($0.reason)" }
         lines += r.skipped.map { "  = \(($0.from as NSString).lastPathComponent) left in place: identical to \($0.identicalTo ?? "?")" }
         lines += r.failed.map { "  ✗ \($0.name): \($0.reason)" }
         return lines.joined(separator: "\n")
