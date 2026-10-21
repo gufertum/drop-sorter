@@ -7,5 +7,12 @@ enum Log {
     static var prefix = "DropMover"
     static var sink: (String) -> Void = { NSLog("%@", $0) }
 
-    static func info(_ message: String) { sink("\(prefix): \(message)") }
+    private static let lock = NSLock()
+
+    /// Thread-safe: the folder scan logs from several threads at once.
+    static func info(_ message: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        sink("\(prefix): \(message)")
+    }
 }

@@ -3,6 +3,10 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
+## [Unreleased]
+
+- #27 Faster chooser: opens at once, folders scanned in the background and in parallel; Return closes it at once
+
 ## [1.0.0] - 2026-10-21
 
 First release of Drop Sorter, with Drop Mover moved in from `lab/drop-mover`.
