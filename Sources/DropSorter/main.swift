@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// `DROPSORTER_HOME` points to another folder for config and history, for tests with a sample base folder.
+    /// `DROPSORTER_HOME` points to another folder for config and history, for tests with sample target folders.
     private let supportDirectory = ProcessInfo.processInfo.environment["DROPSORTER_HOME"]
         .map { URL(fileURLWithPath: $0, isDirectory: true) }
         ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateShelf()
         // Let the slide-in finish, then draw the eye to the shelf.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.shelf.pulse() }
-        // First run: no configuration file yet. Settings explains the shelf and asks for the base folder.
+        // First run: no configuration file yet. Settings explains the shelf and asks for the target folders.
         if configStore.activeURL == nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.showSettings(welcome: true) }
         }

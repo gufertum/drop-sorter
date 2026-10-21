@@ -12,7 +12,7 @@ enum CLI {
     }
 
     static let usage = """
-    dropsorter \(version): sort files into the folders below your base folder.
+    dropsorter \(version): sort files into your target folders and the folders inside them.
 
     Usage:
       dropsorter folders [-q FILTER]                 list target folders (filtered like the chooser)

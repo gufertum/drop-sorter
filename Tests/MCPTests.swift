@@ -1,6 +1,14 @@
 import Foundation
 
 func mcpTests() throws {
+    // Target folders replaced the base folder (#16); agents must not be told about one.
+    for t in MCPServer.tools {
+        check(!t.description.lowercased().contains("base folder"), "\(t.name) description mentions a base folder")
+        check(!"\(t.properties)".lowercased().contains("base folder"), "\(t.name) parameters mention a base folder")
+    }
+    let initLine = MCPServer(service: SortService(home: FileManager.default.temporaryDirectory)).handle(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#) ?? ""
+    check(!initLine.lowercased().contains("base folder"), "MCP instructions mention a base folder")
+    check(!CLI.usage.lowercased().contains("base folder"), "CLI help mentions a base folder")
     let fm = FileManager.default
     let root = try makeTempDir("mcp")
     defer { try? fm.removeItem(at: root) }

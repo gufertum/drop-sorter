@@ -122,7 +122,7 @@ enum FolderIndex {
     }
 
     /// `url` as a path relative to `base`, or nil when it is not inside it (or is `base` itself).
-    /// Symbolic links are resolved on both sides (/var vs /private/var, a base folder reached through a link).
+    /// Symbolic links are resolved on both sides (/var vs /private/var, a target folder reached through a link).
     static func relativePath(of url: URL, in base: URL) -> String? {
         let b = base.standardizedFileURL.resolvingSymlinksInPath().pathComponents
         let u = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents

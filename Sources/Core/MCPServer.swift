@@ -22,7 +22,7 @@ final class MCPServer {
 
     static let tools: [Tool] = [
         Tool(name: "list_folders",
-             description: "List the target folders below the user's base folder (paths relative to it). With 'query', only matching folders, best match first (same filter as the Drop Sorter chooser: space-separated terms, each must match).",
+             description: "List the folders files can go into: the user's target folders and the folders inside them. Each has a short 'name' (target folder name plus the path inside it) and its full 'path'. With 'query', only matching folders, best match first (same filter as the Drop Sorter chooser: space-separated terms, each must match).",
              properties: ["query": ["type": "string", "description": "Optional filter, e.g. \"fin inv\"."]],
              required: [], readOnly: true, destructive: false),
         Tool(name: "suggest_folder",
@@ -31,14 +31,14 @@ final class MCPServer {
                           "limit": ["type": "integer", "minimum": 1, "maximum": 50, "description": "Number of candidates, default 8."]],
              required: ["names"], readOnly: true, destructive: false),
         Tool(name: "sort_files",
-             description: "Move (or copy) existing files or folders into one target folder below the base folder. Give either 'folder' (relative path from list_folders) or auto=true (only succeeds when the suggestion is clear). Items are never overwritten (a -2 suffix is added); rename rules of the target apply. Use dry_run to preview names. The operation can be undone with undo_last as long as it stays the most recent one.",
+             description: "Move (or copy) existing files or folders into one folder from list_folders. Give either 'folder' (its short name or full path) or auto=true (only succeeds when the suggestion is clear). Items are never overwritten (a -2 suffix is added); rename rules of the target apply. Use dry_run to preview names. The operation can be undone with undo_last as long as it stays the most recent one.",
              properties: ["paths": ["type": "array", "items": ["type": "string"], "description": "Absolute paths of existing files or folders."],
-                          "folder": ["type": "string", "description": "Target folder relative to the base folder."],
+                          "folder": ["type": "string", "description": "Short name or full path of a folder from list_folders."],
                           "auto": ["type": "boolean", "description": "Use the clear suggestion instead of 'folder'."],
                           "mode": ["type": "string", "enum": ["move", "copy"], "description": "Default move."],
                           "identical": ["type": "string", "enum": ["keep", "skip"], "description": "Items whose content already exists in the target folder (by hash): keep = move/copy anyway under a distinct name and report identicalTo (default); skip = leave them in place."],
                           "dry_run": ["type": "boolean", "description": "Only report the resulting names."],
-                          "also_copy_to": ["type": "string", "description": "Optional: also put a plain copy of each item into this target folder (no rename, no further copies)."]],
+                          "also_copy_to": ["type": "string", "description": "Optional: also put a plain copy of each item into this folder (short name or full path from list_folders; no rename, no further copies)."]],
              required: ["paths"], readOnly: false, destructive: false),
         Tool(name: "undo_last",
              description: "Undo the most recent operation (from the app, CLI, MCP or REST), once. Moves go back; copies go to the Trash. With 'id', only if that operation is still the most recent one.",
@@ -48,7 +48,7 @@ final class MCPServer {
              description: "Show the most recent operation that undo_last would revert, or null.",
              properties: [:], required: [], readOnly: true, destructive: false),
         Tool(name: "get_config",
-             description: "Read Drop Sorter's configuration: base folder, rename rules, favorites, exclusions, aliases, extension rules, suggestion thresholds.",
+             description: "Read Drop Sorter's configuration: target folders, rename rules, favorites, exclusions, aliases, extension rules, suggestion thresholds.",
              properties: [:], required: [], readOnly: true, destructive: false),
         Tool(name: "list_drop_apps",
              description: "List the Drop Mover apps managed by Drop Sorter with state (current, outdated, legacy, missing, foreign), target, mode and rename pattern.",
@@ -87,7 +87,7 @@ final class MCPServer {
                 "protocolVersion": version,
                 "capabilities": ["tools": ["listChanged": false]],
                 "serverInfo": ["name": "drop-sorter", "title": "Drop Sorter", "version": CLI.version],
-                "instructions": "Sort files into folders below the user's base folder. Use list_folders or suggest_folder first, then sort_files with an explicit folder (or auto=true for clear matches only). Only the most recent operation can be undone.",
+                "instructions": "Sort files into the user's target folders (or folders inside them). Use list_folders or suggest_folder first, then sort_files with an explicit folder (or auto=true for clear matches only). Only the most recent operation can be undone.",
             ])
         case "ping":
             return Self.result(id: id, [:])

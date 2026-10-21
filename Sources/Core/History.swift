@@ -51,7 +51,7 @@ struct History: Codable, Equatable {
         }
     }
 
-    /// Forgets folders that no longer exist (renamed or deleted below the base folder).
+    /// Forgets folders that no longer exist (renamed or deleted in a target folder).
     mutating func prune(keeping folders: Set<String>) {
         for (t, map) in counts {
             let kept = map.filter { folders.contains($0.key) }
