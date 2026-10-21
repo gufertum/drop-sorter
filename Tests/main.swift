@@ -16,6 +16,7 @@ let suites: [(String, () throws -> Void)] = [
     ("YAML", yamlTests),
     ("SorterConfigStore", sorterConfigStoreTests),
     ("ShelfVisibility", shelfVisibilityTests),
+    ("ShelfScreen", shelfScreenTests),
     ("ShelfLabels", shelfLabelTests),
     ("ChooserModel", chooserModelTests),
     ("Sorter", sorterTests),

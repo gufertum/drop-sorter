@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Decides whether the shelf is shown. Pure, so the rules are testable without AppKit.
@@ -25,5 +26,22 @@ struct ShelfVisibility {
         if frontmost == ownBundleID { return .keep }
         if frontmost == Self.finderBundleID && (finderHasWindows || showOnDesktop) { return .show }
         return .hideLater
+    }
+
+    /// Index of the screen that shows the largest part of `window`, nil when it is on none.
+    /// `window` is in window-list coordinates (origin at the top left of the primary screen, y down,
+    /// as `CGWindowListCopyWindowInfo` reports it); `screens` are Cocoa frames (origin at the bottom
+    /// left of the primary screen, y up), the primary screen first.
+    static func screenIndex(forWindow window: CGRect, screens: [CGRect]) -> Int? {
+        guard let primary = screens.first else { return nil }
+        let flipped = CGRect(x: window.minX, y: primary.maxY - window.maxY, width: window.width, height: window.height)
+        var best: (index: Int, area: CGFloat)?
+        for (i, s) in screens.enumerated() {
+            let r = s.intersection(flipped)
+            guard !r.isNull, r.width > 0, r.height > 0 else { continue }
+            let area = r.width * r.height
+            if area > (best?.area ?? 0) { best = (i, area) }
+        }
+        return best?.index
     }
 }
