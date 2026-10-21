@@ -466,6 +466,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateShelf()
     }
 
+    /// The offline help: docs/user rendered to HTML by build.sh, opened in the default browser.
+    @objc private func showHelp() {
+        guard let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Help") else {
+            showError("Help is missing", ["This build has no Contents/Resources/Help. Rebuild with build.sh."], openConfig: false)
+            return
+        }
+        NSWorkspace.shared.open(index)
+    }
+
     @objc private func openConfig() {
         if let url = configStore.activeURL {
             NSWorkspace.shared.open(url)
@@ -502,6 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
         m.addItem(withTitle: "Settings…", action: #selector(showSettings as () -> Void), keyEquivalent: "").target = self
         m.addItem(withTitle: "Open Configuration File", action: #selector(openConfig), keyEquivalent: "").target = self
+        m.addItem(withTitle: "Drop Sorter Help", action: #selector(showHelp), keyEquivalent: "").target = self
         m.addItem(.separator())
         m.addItem(withTitle: "Drop Sorter \(AppVersion.display)", action: nil, keyEquivalent: "")  // no action: shown disabled
         m.addItem(withTitle: "Quit Drop Sorter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
@@ -531,6 +541,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
+        let helpItem = NSMenuItem()
+        helpItem.submenu = NSMenu(title: "Help")
+        helpItem.submenu?.addItem(withTitle: "Drop Sorter Help", action: #selector(showHelp), keyEquivalent: "?").target = self
+        main.addItem(helpItem)
         return main
     }
 }

@@ -27,7 +27,7 @@ enum ServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .config(let why): return "Configuration error: \(why)"
-        case .noTargets: return "No target folders configured (Settings › General › Target folders, or 'targets' in the configuration)."
+        case .noTargets: return "No target folders configured (Settings › Folders › Target folders, or 'targets' in the configuration)."
         case .invalidInput(let why): return why
         case .notFound(let path): return "Not found: \(path)"
         case .folderNotAllowed(let f): return "'\(f)' is not one of the target folders (hidden, excluded, missing or outside every target)."

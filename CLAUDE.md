@@ -5,7 +5,8 @@ A general-purpose file mover: a shelf shown while Finder is active takes dropped
 into one of the configured target folders (or a folder inside one), chosen with a name-based suggestion
 and a filter. Keep docs and UI free of any particular notes app; say "target folder", not "vault". The repository also contains Drop
 Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter generates, updates and adopts.
-User-facing docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
+User docs: `docs/user/*.md` (single source for the app's offline help and the future website, #6);
+developer docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
 Original concept (written for an Obsidian vault, before the app became general purpose): https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 
 ## Layout
@@ -21,7 +22,7 @@ Original concept (written for an Obsidian vault, before the app became general p
   folder, for manual tests with sample target folders: `open -n --env DROPSORTER_HOME=<dir> "build/Drop Sorter.app"`.
 - `Tests/` test executable: `Check.swift` helpers, one `*Tests.swift` function per area, `main.swift` runs them.
 - `Sources/CLI/` the `dropsorter` binary (thin: `CLI.swift` in Core parses and runs the commands).
-- `Tools/` make-icon (iconset).
+- `Tools/` make-icon (iconset), make-help (docs/user Markdown to the offline help HTML).
 
 ## Build and test
 
@@ -82,6 +83,11 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
   count, dev commit) and sets both Info.plists; code reads `AppVersion`. Drop Mover's executable gets the
   version only, so a commit alone does not make every drop app "outdated". Each merged issue gets a line
   in `CHANGELOG.md` under the next version; releases are tagged with `scripts/tag-release.sh` on `main`.
+- **Docs stay in sync with features**: a branch that changes behaviour, a setting, a config key, a CLI
+  command, an MCP tool or a REST route updates `docs/user` in the same branch. `Tests/DocsTests.swift`
+  fails on broken links and on undocumented config keys, CLI commands, MCP tools and rename tokens.
+  `docs/user` uses only the Markdown subset `Tools/make-help/Markdown.swift` renders (no HTML, no nested
+  lists, no links inside code); build.sh renders it into `Contents/Resources/Help`.
 - Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
 - Keep the token list in `Renamer.swift` and the table in docs/DROP-MOVER.md in sync. Keep the scoring
   table in README.md in sync with `Matcher.score`.

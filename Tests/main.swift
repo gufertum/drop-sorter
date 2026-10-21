@@ -17,6 +17,7 @@ let suites: [(String, () throws -> Void)] = [
     ("SorterConfigStore", sorterConfigStoreTests),
     ("ShelfVisibility", shelfVisibilityTests),
     ("Version", versionTests),
+    ("Docs", docsTests),
     ("ShelfLabels", shelfLabelTests),
     ("ChooserModel", chooserModelTests),
     ("Sorter", sorterTests),

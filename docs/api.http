@@ -1,5 +1,5 @@
 # Drop Sorter REST API v1 (httpyac / VS Code REST Client).
-# Turn it on in Settings › General › API (or run `dropsorter serve`), then "Copy Token" and put it
+# Turn it on in Settings › Advanced › API (or run `dropsorter serve`), then "Copy Token" and put it
 # into the variable below. Never commit a real token.
 @base = http://127.0.0.1:47800/v1
 @token = {{$processEnv DROPSORTER_TOKEN}}

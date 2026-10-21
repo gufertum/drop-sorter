@@ -41,6 +41,9 @@ open "build/Drop Sorter.app"
 
 ## Use
 
+The full user documentation, also bundled as the app's offline help (Help menu, ⌘?), is in
+[docs/user](docs/user/index.md). Short version:
+
 Drop Sorter runs in the background without a Dock icon. On the first start it opens Settings with a
 short welcome and asks for your target folders; the shelf flashes in the accent colour at every launch,
 so it is easy to find.
@@ -71,7 +74,7 @@ so it is easy to find.
 - **Settings**: gear on the shelf, right-click on the shelf, or the optional menu-bar icon (dropping
   files on the icon opens the chooser too). Every change is saved at once. A hand-edited
   `config.yaml` is picked up the next time the shelf appears or something is dropped.
-- **Drop apps** (Settings › Favorites & Drop Apps): create standalone Drop Mover apps for one fixed
+- **Drop apps** (Settings › Drop Apps): create standalone Drop Mover apps for one fixed
   folder, find existing ones, update them or adopt old copies. They keep their target and pattern.
 - **Open at login**: in Settings (uses the system login items; the app starts from where it is, so
   move it to /Applications first).
@@ -92,7 +95,7 @@ The first `codesign` run may ask for keychain access: choose "Always Allow".
 ## Command line
 
 `dropsorter` uses the same engine, configuration, history and undo as the app, and works without the
-app running. Settings › General › **Install Command Line Tool** links it into `~/.local/bin`; or:
+app running. Settings › Advanced › **Install Command Line Tool** links it into `~/.local/bin`; or:
 
 ```bash
 ln -sf "/Applications/Drop Sorter.app/Contents/Helpers/dropsorter" ~/.local/bin/dropsorter
@@ -138,7 +141,7 @@ Other clients (JSON config):
 
 ## REST API
 
-Off by default. Settings › General › API: enable it, pick the port (default 47800), **Copy Token**.
+Off by default. Settings › Advanced › API: enable it, pick the port (default 47800), **Copy Token**.
 It listens on `127.0.0.1` only, needs `Authorization: Bearer <token>` on every route except health,
 accepts only `127.0.0.1` / `localhost` as Host (no DNS rebinding from web pages) and cannot change
 settings. The token lives in `api-token` (mode 0600) in the support folder; **New Token** replaces it.
@@ -154,9 +157,9 @@ curl -s -H "Authorization: Bearer $TOKEN" -X POST http://127.0.0.1:47800/v1/undo
 | Route | Body | Result |
 |---|---|---|
 | `GET /v1/health` | | `{status, version}`, no token |
-| `GET /v1/folders?q=` | | `{base, folders}` |
+| `GET /v1/folders?q=` | | `{targets, folders}` |
 | `POST /v1/suggest` | `{names, limit?}` | `{preselected, candidates}` |
-| `POST /v1/sort` | `{paths, folder? \| auto?, mode?, dryRun?}` | `{id, mode, folder, dryRun, items, failed}` |
+| `POST /v1/sort` | `{paths, folder? \| auto?, mode?, identical?, alsoCopyTo?, dryRun?}` | `{id, mode, folder, path, dryRun, items, skipped, failed, extraCopies, extraSkipped, extraFailed}` |
 | `POST /v1/undo` | `{id?}` | `{id, mode, folder, items, failed}` |
 | `GET /v1/last` | | `{operation}` (null when there is nothing to undo) |
 | `GET /v1/config` | | the configuration |
@@ -164,7 +167,7 @@ curl -s -H "Authorization: Bearer $TOKEN" -X POST http://127.0.0.1:47800/v1/undo
 
 Errors: `{"error": {"code", "message"}}` with 400 `invalid_input`, 401 `unauthorized`, 404
 `not_found` / `no_route`, 409 `nothing_to_undo` / `stale_undo`, 413, 421 `bad_host`, 422
-`folder_not_allowed` / `no_clear_suggestion`, 503 `config_error` / `no_base_folder`. Requests for every
+`folder_not_allowed` / `no_clear_suggestion`, 503 `config_error` / `no_target_folders`. Requests for every
 route: [docs/api.http](docs/api.http) (httpyac).
 
 ## How a folder is suggested
@@ -227,7 +230,7 @@ shelf:
   hideDelayMs: 400
   trash: true        # Trash spot at the bottom of the shelf
 menuBarIcon: true    # default; false hides the icon
-api:                 # REST API, Settings › General › API
+api:                 # REST API, Settings › Advanced › API
   enabled: false
   port: 47800
 dropApps:            # managed in Settings › Drop apps

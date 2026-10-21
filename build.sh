@@ -51,7 +51,7 @@ set_version() {
 }
 
 echo "==> tests"
-"${SWIFTC[@]}" "${CORE[@]}" Tests/*.swift -o "$BUILD/obj/tests"
+"${SWIFTC[@]}" "${CORE[@]}" Tools/make-help/Markdown.swift Tests/*.swift -o "$BUILD/obj/tests"
 "$BUILD/obj/tests"
 
 echo "==> UI checks"
@@ -93,6 +93,9 @@ iconutil -c icns "$BUILD/obj/SorterIcon.iconset" -o "$SORTER/Contents/Resources/
   -o "$SORTER/Contents/MacOS/DropSorter"
 cp Resources/DropSorter/Info.plist "$SORTER/Contents/Info.plist"
 set_version "$SORTER/Contents/Info.plist"
+# Offline help: docs/user rendered to HTML (Help menu, ⌘?).
+"${SWIFTC[@]}" Tools/make-help/*.swift -o "$BUILD/obj/make-help"
+"$BUILD/obj/make-help" docs/user "$SORTER/Contents/Resources/Help"
 # Template for generated Drop Mover apps. No .app extension, so Launch Services does not register it.
 cp -R "$APP" "$SORTER/Contents/Resources/DropMoverTemplate"
 # The command line tool ships inside the app; Settings links it into ~/.local/bin. Not in
