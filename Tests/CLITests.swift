@@ -45,7 +45,7 @@ func cliTests() throws {
     eq(run(service, "move", "--bogus").0, 2)
     eq(run(service).0, 2)
     eq(run(service, "help").0, 0)
-    eq(run(service, "--version").1, CLI.version + "\n")
+    eq(run(service, "--version").1, AppVersion.display + "\n")
 
     // folders: hidden folders are no targets; the filter ranks like the chooser.
     let f = run(service, "folders")
@@ -132,4 +132,15 @@ func cliTests() throws {
     eq(try String(contentsOf: cfg, encoding: .utf8), "suggest: {minScore: x}\n")
     try Data("favorites: [00 Inbox]\n".utf8).write(to: cfg)
     eq(run(service, "folders").0, 3)  // no base
+}
+
+func versionTests() throws {
+    eq(AppVersion.format(version: "1.2.3", build: "61", devCommit: nil), "1.2.3 (61)")
+    eq(AppVersion.format(version: "1.2.3", build: "61", devCommit: "abc1234"), "1.2.3-dev+abc1234 (61)")
+    eq(AppVersion.format(version: "1.2.3", build: "", devCommit: nil), "1.2.3")
+    // build.sh runs the tests from the repository root: the compiled version is the VERSION file.
+    let file = try String(contentsOfFile: "VERSION", encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    eq(AppVersion.version, file)
+    eq(CLI.version, file)
+    check(AppVersion.display.hasPrefix(file), "display starts with the version")
 }

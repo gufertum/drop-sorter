@@ -179,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSLog("DropMover: started %@ at %@", AppVersion.version, Bundle.main.bundlePath)
         finishedLaunching = true
         if !launchedWithFiles { showWindow() }
     }

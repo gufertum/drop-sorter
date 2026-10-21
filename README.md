@@ -13,12 +13,7 @@ and history are in this repository now.
 
 ## Status
 
-| Phase | Content | State |
-|---|---|---|
-| 1 | Repository layout, tested core (matcher, folder index, history, mover, config) | done |
-| 2 | Shelf, chooser, toast with Undo | done |
-| 3 | Settings, favorites, optional menu-bar icon, open at login, stable signing | done |
-| 4 | Generate, update and adopt Drop Mover apps | in review |
+Version and changes per release: [CHANGELOG.md](CHANGELOG.md).
 
 Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
 
@@ -30,6 +25,19 @@ Requires the Xcode Command Line Tools (`xcode-select --install`), macOS 13+, App
 ./build.sh      # unit tests, build/dropsorter, build/Drop Mover.app, build/Drop Sorter.app
 open "build/Drop Sorter.app"
 ```
+
+### Versions and releases
+
+- `VERSION` holds the version (`X.Y.Z`). `build.sh` writes it into both Info.plists and into the binaries;
+  the build number is the git commit count.
+- A build of the commit tagged `vX.Y.Z` with no local changes is a release build: `1.0.0 (61)`. Every other
+  build is a dev build and shows its commit: `1.0.0-dev+abc1234 (61)`, with `-dirty` for local changes.
+- The version shows in Settings › Advanced › About, in the shelf and menu-bar menus, in
+  `dropsorter --version`, in the MCP server info and `GET /v1/health`, and in the log at start.
+  Settings › Drop Apps lists each drop app's version; whether a copy needs an update still depends only on
+  its executable.
+- Release: bump `VERSION`, date the entry in `CHANGELOG.md` (`## [1.1.0] - 2026-11-02`), merge `develop`
+  into `main`, then `scripts/tag-release.sh` and `git push origin vX.Y.Z`.
 
 ## Use
 

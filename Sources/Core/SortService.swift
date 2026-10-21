@@ -115,6 +115,7 @@ struct DropAppReport: Codable, Equatable {
     let mode: TransferMode?
     let pattern: String?
     let configError: String?
+    let version: String?
 }
 
 /// The engine behind the CLI, the MCP server and the REST API (and the app's history and undo):
@@ -230,7 +231,8 @@ final class SortService {
             let info = template.map { DropAppFactory.inspect(url, template: $0) }
                 ?? DropAppFactory.inspect(url, template: url)  // no template: current vs outdated unknown, reported as current
             return DropAppReport(path: url.path, name: info.name, state: "\(info.state)", target: info.config?.target,
-                                 mode: info.config?.mode, pattern: info.config?.pattern, configError: info.configError)
+                                 mode: info.config?.mode, pattern: info.config?.pattern, configError: info.configError,
+                                 version: info.version)
         }
     }
 

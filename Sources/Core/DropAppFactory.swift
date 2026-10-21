@@ -39,6 +39,8 @@ struct DropAppInfo: Equatable {
     let config: DropConfig?
     /// Unreadable config.json; the app still works but shows the error when launched.
     let configError: String?
+    /// CFBundleShortVersionString of the copy; shown only (current vs outdated compares the executable).
+    var version: String? = nil
 
     var name: String { url.deletingPathExtension().lastPathComponent }
     var needsUpdate: Bool { state == .outdated || state == .legacy }
@@ -71,7 +73,8 @@ enum DropAppFactory {
         } else {
             state = executable(of: url) == executable(of: template) ? .current : .outdated
         }
-        return DropAppInfo(url: url, state: state, config: config, configError: configError)
+        return DropAppInfo(url: url, state: state, config: config, configError: configError,
+                           version: infoPlist(url)?["CFBundleShortVersionString"] as? String)
     }
 
     /// Drop Mover apps (current and legacy ids) below `roots`. Does not look inside app bundles,

@@ -78,6 +78,10 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
   Keep `SorterConfigStore.keyOrder` and the README config example in sync with `SorterConfig`.
 - Fail loudly: corrupt config or history files throw instead of being reset; `SorterConfig.validate()`
   at startup and before saving; errors are logged via `NSLog` with the prefix in `Mover.logPrefix`.
+- **Version**: `VERSION` (X.Y.Z) is the only source; `build.sh` generates `BuildInfo` (version, commit
+  count, dev commit) and sets both Info.plists; code reads `AppVersion`. Drop Mover's executable gets the
+  version only, so a commit alone does not make every drop app "outdated". Each merged issue gets a line
+  in `CHANGELOG.md` under the next version; releases are tagged with `scripts/tag-release.sh` on `main`.
 - Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
 - Keep the token list in `Renamer.swift` and the table in docs/DROP-MOVER.md in sync. Keep the scoring
   table in README.md in sync with `Matcher.score`.
