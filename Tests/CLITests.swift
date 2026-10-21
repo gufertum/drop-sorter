@@ -1,6 +1,6 @@
 import Foundation
 
-/// Temporary home (config, history, journal) with a small base folder and a Downloads folder.
+/// Temporary home (config, history, journal) with a small target folder and a Downloads folder.
 private func sandbox() throws -> (root: URL, service: SortService, downloads: URL, trash: URL) {
     let fm = FileManager.default
     let root = try makeTempDir("cli")

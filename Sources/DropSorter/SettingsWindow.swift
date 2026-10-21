@@ -1,8 +1,8 @@
 import AppKit
 import ServiceManagement
 
-/// Settings: base folder, rename rules, shelf, menu-bar icon, open at login, learned history (General tab);
-/// favorites and Drop Mover apps (second tab).
+/// Settings in four tabs: Folders (target folders, rename rules), Shelf (favorites, shelf options),
+/// Drop Apps, Advanced (login, learned history, command line, about, REST API).
 /// Every change is saved at once through `onChange`, which returns an error text when it was refused.
 final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     var onChange: ((SorterConfig) -> String?)?
