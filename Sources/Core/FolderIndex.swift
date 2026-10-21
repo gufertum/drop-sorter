@@ -7,7 +7,7 @@ enum FolderIndexError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .baseNotFound(let p): return "Folder not found: \(p)"
-        case .noTargets: return "No target folders configured (Settings › General › Target folders)."
+        case .noTargets: return "No target folders configured (Settings › Folders › Target folders)."
         }
     }
 }

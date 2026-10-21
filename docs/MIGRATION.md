@@ -4,7 +4,7 @@
 
 > **Historical record.** The steps below used `scripts/install-copy.sh`, which was removed when Drop
 > Sorter took over creating drop apps. To bring these copies up to date now (new bundle id
-> `li.sudo.dropmover`, current build), open Drop Sorter › Settings › Favorites & Drop Apps, click
+> `li.sudo.dropmover`, current build), open Drop Sorter › Settings › Drop Apps, click
 > **Find…**, choose `~/Documents/2ndBrain-Files`, then **Update All**. Each copy keeps its target and
 > pattern; the old bundle goes to the Trash.
 
