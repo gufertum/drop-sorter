@@ -18,6 +18,7 @@ First release of Drop Sorter, with Drop Mover moved in from `lab/drop-mover`.
 - #10 Command line tool `dropsorter`
 - #11 MCP server (`dropsorter mcp`)
 - #12 REST API (localhost, token, off by default)
+- #13 User documentation, offline help in the app (⌘?)
 - #14 Quiet test output; one log hook for the engine
 - #15 First start more visible: shelf contrast, attention pulse, welcome
 - #16 Target folders instead of a base folder
@@ -32,3 +33,6 @@ First release of Drop Sorter, with Drop Mover moved in from `lab/drop-mover`.
 - #25 Settings window less cramped
 - #26 Trash spot on the shelf
 - #28 Version number in app, CLI and drop apps; tagged releases
+- #29 CLI help and MCP descriptions speak of target folders
+- #30 Launch pin ends when another app gets the focus
+- #32 Shelf appears on the screen of the front Finder window

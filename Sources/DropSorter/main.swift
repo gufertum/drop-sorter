@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hideWork?.cancel()
             hideWork = nil
             if !shelf.isShown { reloadConfigIfChanged() }
-            shelf.slideIn()
+            shelf.slideIn(on: FrontmostWatcher.finderScreen())
         case .keep:
             break
         case .hideLater:

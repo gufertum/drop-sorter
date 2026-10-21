@@ -30,6 +30,8 @@ final class ShelfPanel: NSPanel {
     private weak var frameView: NSView?
     private let glow: GlowContainer
     private(set) var isShown = false
+    /// The screen the shelf shows on; kept until `slideIn(on:)` names another one.
+    private var targetScreen: NSScreen?
 
     init(menu: NSMenu) {
         let content = NSVisualEffectView()
@@ -170,7 +172,9 @@ final class ShelfPanel: NSPanel {
     // MARK: Slide in and out at the right screen edge
 
     private func shownFrame() -> NSRect {
-        let screen = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
+        // A screen that was disconnected is no longer in NSScreen.screens.
+        let current = targetScreen.flatMap { s in NSScreen.screens.first { $0 == s } }
+        let screen = (current ?? NSScreen.main ?? NSScreen.screens[0]).visibleFrame
         let size = frame.size
         // The window includes the glow margin; the visible shelf keeps `inset` from the edges.
         let pad = Self.inset - glow.margin
@@ -201,14 +205,18 @@ final class ShelfPanel: NSPanel {
         layer.add(group, forKey: "pulse")
     }
 
-    func slideIn() {
+    /// Shows the shelf on `screen` (the Finder window's screen); nil keeps the current one. Already shown
+    /// on another screen: it pops up on the new one.
+    func slideIn(on screen: NSScreen? = nil) {
         // The accent colour can change in System Settings; take the current one.
         frameView?.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
-        guard !isShown else { return }
+        let moves = screen != nil && screen != targetScreen
+        if let screen { targetScreen = screen }
+        guard !isShown || moves else { return }
         isShown = true
         visibleGeneration += 1
         let target = shownFrame()
-        if !isVisible {
+        if !isVisible || moves {
             // Pops up from below the bottom edge.
             setFrame(target.offsetBy(dx: 0, dy: -(target.height + Self.inset)), display: false)
             alphaValue = 0

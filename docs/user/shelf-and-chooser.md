@@ -2,12 +2,16 @@
 
 ## The shelf
 
-The shelf pops up at the bottom right of the screen while Finder is the active app, and slides away
-shortly after another app becomes active (0.4 seconds by default, see [Settings](settings.md#shelf)).
+The shelf pops up at the bottom right of the screen with the front Finder window while Finder is the
+active app, and slides away shortly after another app becomes active (0.4 seconds by default, see [Settings](settings.md#shelf)).
 It also shows over the bare desktop unless you turn that off.
 
 When you open Drop Sorter (at launch, from Spotlight, Finder or the Dock, or with **Show Shelf** in the
-menu-bar menu), the shelf shows even when Finder is not active. ✕ hides it at once.
+menu-bar menu), the shelf shows even when Finder is not active, until you switch to another app than Finder. ✕ hides
+it at once.
+
+With several displays the shelf follows Finder: click a Finder window on another display and the shelf
+moves there within a second. Over the bare desktop it stays where it was.
 
 From top to bottom the shelf has:
 

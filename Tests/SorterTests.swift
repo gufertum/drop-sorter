@@ -134,3 +134,20 @@ func sorterTests() throws {
     history.forget(tokens: ["notes", "notes", "unknown"], folder: F("90 Archive"))
     eq(history.count("notes", F("90 Archive")), 0)
 }
+
+func shelfScreenTests() {
+    // Primary 1440x900 at the origin; a second screen 1920x1080 to its right, bottom-aligned; a third
+    // above the primary. Window rects are in window-list coordinates (top left of the primary, y down).
+    let screens = [CGRect(x: 0, y: 0, width: 1440, height: 900),
+                   CGRect(x: 1440, y: 0, width: 1920, height: 1080),
+                   CGRect(x: 0, y: 900, width: 1440, height: 900)]
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 100, y: 100, width: 800, height: 600), screens: screens), 0)
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 1600, y: 100, width: 800, height: 600), screens: screens), 1)
+    // Above the primary screen: negative y in window-list coordinates.
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 100, y: -800, width: 800, height: 600), screens: screens), 2)
+    // Spanning two screens: the one with the larger part wins.
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 1240, y: 100, width: 800, height: 600), screens: screens), 1)
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 840, y: 100, width: 800, height: 600), screens: screens), 0)
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 9000, y: 9000, width: 10, height: 10), screens: screens), nil)
+    eq(ShelfVisibility.screenIndex(forWindow: CGRect(x: 0, y: 0, width: 10, height: 10), screens: []), nil)
+}
