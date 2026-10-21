@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let toast = SortToast()
     private var chooser: ChooserPanel?
     private var visibility = ShelfVisibility()
-    /// Launching (or launching again) pins the shelf until ✕.
+    /// Launching (or launching again) pins the shelf until ✕ or until another app (not Finder) gets the focus.
     private var pinned = true
     private var dragOver = false
     private var hideWork: DispatchWorkItem?
@@ -63,7 +63,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.pinned = false
             self?.updateShelf(immediate: true)
         }
-        watcher.onChange = { [weak self] in self?.updateShelf() }
+        watcher.onChange = { [weak self] in
+            guard let self else { return }
+            if self.pinned && self.visibility.releasesPin(activated: self.watcher.frontmost) { self.pinned = false }
+            self.updateShelf()
+        }
         watcher.start()
         finishedLaunching = true
         updateShelf()
@@ -80,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("DropSorter: started, config %@", configStore.activeURL?.path ?? "(none yet)")
     }
 
-    /// Launching the running app again (Spotlight, Finder, `open -a`) pins the shelf.
+    /// Launching the running app again (Spotlight, Finder, `open -a`) pins the shelf (see `pinned`).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         pinned = true
         updateShelf()

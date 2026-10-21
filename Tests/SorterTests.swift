@@ -15,6 +15,12 @@ func shelfVisibilityTests() {
     desktopOff.showOnDesktop = false
     eq(desktopOff.decide(frontmost: finder, finderHasWindows: false, pinned: false, busy: false), .hideLater)
     eq(desktopOff.decide(frontmost: finder, finderHasWindows: true, pinned: false, busy: false), .show)
+
+    // The launch pin ends when another app gets the focus, not for Finder or Drop Sorter itself.
+    check(v.releasesPin(activated: "com.apple.Safari"), "another app releases the pin")
+    check(!v.releasesPin(activated: finder), "Finder keeps the pin")
+    check(!v.releasesPin(activated: v.ownBundleID), "Drop Sorter (Settings on first run) keeps the pin")
+    check(!v.releasesPin(activated: nil), "unknown app keeps the pin")
 }
 
 func chooserModelTests() {
