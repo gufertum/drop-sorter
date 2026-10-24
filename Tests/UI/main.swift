@@ -97,4 +97,7 @@ typed.show(ChooserModel(items: dropped, suggestion: suggestion))
 returnKey(typed)
 check(chosen == ["40 Resources/Recipes"], "typed filter kept when the list arrives: \(chosen)")
 
+// Long paths need room: the chooser is at least 900 pt wide before present() fits it to the screen.
+check(typed.frame.width >= 900 && typed.frame.height >= 560, "chooser size: \(typed.frame.size)")
+
 if failures == 0 { print("All UI checks passed.") } else { print("\(failures) UI failure(s)"); exit(1) }

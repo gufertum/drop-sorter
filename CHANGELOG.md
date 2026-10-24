@@ -3,6 +3,10 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
+## [Unreleased]
+
+- #34 Bigger chooser (900 × 560, fitted to small screens) for long paths; full path as tooltip
+
 ## [1.1.0] - 2026-10-21
 
 - #31 Images in the help, rendered by the app (light and dark); help pages reviewed against 1.0.0

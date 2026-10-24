@@ -22,7 +22,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         scanning = model == nil
         self.mode = mode
         self.renamePattern = renamePattern
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 600, height: 440),
+        super.init(contentRect: NSRect(origin: .zero, size: Self.size),
                    styleMask: [.borderless], backing: .buffered, defer: false)
         level = .floating
         isOpaque = false
@@ -36,6 +36,9 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     }
 
     override var canBecomeKey: Bool { true }
+
+    /// Wide enough for long folder paths; `present()` shrinks it on a small screen.
+    static let size = NSSize(width: 900, height: 560)
 
     /// The scanned folders arrive; what the user typed meanwhile still filters them.
     func show(_ model: ChooserModel) {
@@ -52,6 +55,10 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
 
     func present() {
         let screen = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
+        if let glow = contentView as? GlowContainer {
+            setContentSize(NSSize(width: min(Self.size.width, screen.width * 0.9) + 2 * glow.margin,
+                                  height: min(Self.size.height, screen.height * 0.8) + 2 * glow.margin))
+        }
         setFrameOrigin(NSPoint(x: screen.midX - frame.width / 2, y: screen.minY + screen.height * 0.62 - frame.height / 2))
         makeKeyAndOrderFront(nil)
         makeFirstResponder(field)
@@ -132,7 +139,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         let glow = GlowContainer(content: content, cornerRadius: 14)
         glow.setGlow(0.8)
         contentView = glow
-        setContentSize(NSSize(width: 600 + 2 * glow.margin, height: 440 + 2 * glow.margin))
+        setContentSize(NSSize(width: Self.size.width + 2 * glow.margin, height: Self.size.height + 2 * glow.margin))
     }
 
     private func setVerdict(_ override: String? = nil) {
@@ -283,7 +290,12 @@ final class FolderCell: NSTableCellView {
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 0
+        // The text takes the free width, so the badges line up at the right edge in every row.
+        text.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        badges.setContentHuggingPriority(.required, for: .horizontal)
+        badges.setContentCompressionResistancePriority(.required, for: .horizontal)
         let row = NSStackView(views: [text, badges])
+        row.distribution = .fill
         row.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -303,6 +315,8 @@ final class FolderCell: NSTableCellView {
         s.append(NSAttributedString(string: String(shown.dropFirst(cut)),
                                     attributes: [.foregroundColor: NSColor.labelColor, .font: NSFont.systemFont(ofSize: 13, weight: .medium)]))
         path.attributedStringValue = s
+        // The full path, also when the start of a very long one is cut off.
+        toolTip = c.path
         detail.stringValue = c.score > 0 ? c.reasons.joined(separator: " · ") : ""
         detail.isHidden = detail.stringValue.isEmpty
         badges.stringValue = [favorite ? "★" : nil, renames ? "rename" : nil, c.score > 0 ? String(format: "%.1f", c.score) : nil]
