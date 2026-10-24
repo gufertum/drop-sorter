@@ -71,4 +71,30 @@ for item in settings.tabs.tabViewItems {
 }
 check(window.frame.height < 900, "settings window fits a laptop screen: \(window.frame.height)")
 
+// The chooser opens before the folder scan is done (#27): Return waits for the list, and what was
+// typed meanwhile still filters it once it arrives.
+let scanFolders = ["00 Inbox", "30 Areas/Finance/Invoices", "40 Resources/Recipes"].map { FolderEntry(path: $0) }
+let dropped = [DropItem(name: "invoices-hetzner.pdf", isDirectory: false)]
+let suggestion = Matcher.suggest(dropped, folders: scanFolders)
+func returnKey(_ p: ChooserPanel) { _ = p.control(NSTextField(), textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))) }
+func filterField(_ v: NSView) -> NSTextField? {
+    (v as? NSTextField).flatMap { $0.isEditable ? $0 : nil } ?? v.subviews.lazy.compactMap(filterField).first
+}
+var chosen: [String?] = []
+let early = ChooserPanel(items: dropped) { _ in nil }
+early.onFinish = { chosen.append($0) }
+returnKey(early)
+check(chosen.isEmpty, "Return while scanning must not finish: \(chosen)")
+early.show(ChooserModel(items: dropped, suggestion: suggestion))
+returnKey(early)
+check(chosen == ["30 Areas/Finance/Invoices"], "Return after the scan takes the clear match: \(chosen)")
+
+chosen = []
+let typed = ChooserPanel(items: dropped) { _ in nil }
+typed.onFinish = { chosen.append($0) }
+filterField(typed.contentView!)?.stringValue = "reci"
+typed.show(ChooserModel(items: dropped, suggestion: suggestion))
+returnKey(typed)
+check(chosen == ["40 Resources/Recipes"], "typed filter kept when the list arrives: \(chosen)")
+
 if failures == 0 { print("All UI checks passed.") } else { print("\(failures) UI failure(s)"); exit(1) }

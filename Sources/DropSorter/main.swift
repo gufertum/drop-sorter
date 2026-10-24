@@ -32,6 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: SettingsWindow?
     /// Modification date of the config file last read, to pick up hand edits.
     private var configDate: Date?
+    /// The folder scan, started when a drag enters the shelf so the chooser has the list at the drop.
+    private let prefetch = FolderPrefetch()
+    /// Engine calls that touch files (sort, undo, trash) run here, off the main thread, one at a time in order.
+    private let workQueue = DispatchQueue(label: "li.sudo.dropsorter.work", qos: .userInitiated)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Mover.logPrefix = "DropSorter"
@@ -57,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shelf.onDropTrash = { [weak self] urls in self?.trash(urls) }
         shelf.onDragOver = { [weak self] over in
             self?.dragOver = over
+            if over { self?.prefetchFolders() }
             self?.updateShelf()
         }
         shelf.onClose = { [weak self] in
@@ -158,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let id = e.id
         let moved = e.moves.map(\.destination)
-        toast.show(title: "\(e.mode.pastTense) \(plural(e.moves.count)) to \(e.display ?? e.folder) (via \(e.source))",
+        toast.show(title: "\(e.mode.pastTense) \(Self.plural(e.moves.count)) to \(e.display ?? e.folder) (via \(e.source))",
                    lines: moved.prefix(6).map { "→ " + $0.lastPathComponent }, isError: false,
                    actions: [.init(title: "Undo") { [weak self] in self?.undo(id: id) },
                              .init(title: "Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(moved) }])
@@ -226,31 +231,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard reloadConfigIfChanged() else { return }
         guard !config.targets.isEmpty else { return askForTargets(then: urls) }
 
-        let folders: [FolderEntry]
-        do {
-            folders = try service.targetFolders(config)
-        } catch {
-            showError("Cannot read the target folders", [error.localizedDescription], openConfig: true)
-            return
-        }
-        let history: History
-        do { history = try service.history() } catch {
-            showError("Cannot read the history", [error.localizedDescription], openConfig: false)
-            return
-        }
+        // The chooser opens at once; the folder list follows when the scan is done.
         let items = Sorter.dropItems(urls)
-        let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
-        let model = ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoriteIDs))
-
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
         let config = self.config
-        let panel = ChooserPanel(model: model, mode: mode) { config.renamePattern(forTarget: $0) }
-        panel.onFinish = { [weak self] path in self?.finishSort(urls, into: path, mode: mode) }
+        let panel = ChooserPanel(items: items, mode: mode) { config.renamePattern(forTarget: $0) }
+        var scanned: [FolderEntry]?
+        panel.onFinish = { [weak self] path in self?.finishSort(urls, into: path, mode: mode, scanned: scanned) }
         chooser = panel
         updateShelf()
         NSApp.activate(ignoringOtherApps: true)
         panel.present()
+
+        scanFolders { [weak self, weak panel] outcome in
+            guard let self, let panel, self.chooser === panel else { return }
+            let folders: [FolderEntry]
+            do { folders = try outcome.get() } catch {
+                panel.dismiss()
+                self.showError("Cannot read the target folders", [error.localizedDescription], openConfig: true)
+                return
+            }
+            let history: History
+            do { history = try self.service.history() } catch {
+                panel.dismiss()
+                self.showError("Cannot read the history", [error.localizedDescription], openConfig: false)
+                return
+            }
+            scanned = folders
+            let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
+            panel.show(ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoriteIDs)))
+        }
+    }
+
+    /// Starts the folder scan in the background (drag over the shelf), so it is done or nearly done at the drop.
+    private func prefetchFolders() {
+        guard !config.targets.isEmpty else { return }
+        let (config, service) = (self.config, self.service)
+        prefetch.prefetch(key: Self.scanKey(config)) { try service.targetFolders(config) }
+    }
+
+    /// The target folders from a fresh scan (see `FolderPrefetch`), on the main thread.
+    private func scanFolders(_ completion: @escaping (FolderPrefetch.Outcome) -> Void) {
+        let (config, service) = (self.config, self.service)
+        prefetch.folders(key: Self.scanKey(config), scan: { try service.targetFolders(config) }, completion: completion)
+    }
+
+    /// A scan is reused only for the same targets and exclusions.
+    private static func scanKey(_ config: SorterConfig) -> String {
+        config.targetRoots.map { "\($0.subfolders ? "+" : "-")\($0.url.path)" }.joined(separator: "\n")
+            + "\n!" + config.excludeIDs.joined(separator: "\n!")
     }
 
     /// Drop on a favorite spot: moves (or copies) at once, the toast offers Undo.
@@ -263,11 +293,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyConfig()
             return
         }
-        // A favorite is a target of its own, also outside the target folders.
-        perform(urls, into: id, mode: mode, alsoCopyTo: alsoCopyTo, anyFolder: true)
+        // A favorite is a target of its own, also outside the target folders. The scan (usually started
+        // when the drag entered the shelf) is only needed for the history; if it failed, the engine scans.
+        scanFolders { [weak self] outcome in
+            self?.perform(urls, into: id, mode: mode, alsoCopyTo: alsoCopyTo, anyFolder: true, scanned: try? outcome.get())
+        }
     }
 
-    private func finishSort(_ urls: [URL], into folder: String?, mode: TransferMode) {
+    private func finishSort(_ urls: [URL], into folder: String?, mode: TransferMode, scanned: [FolderEntry]?) {
         chooser = nil
         previousApp?.activate(options: [])
         previousApp = nil
@@ -275,25 +308,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Esc: nothing at all happens to the files.
         guard let folder else { return }
 
-        perform(urls, into: folder, mode: mode)
+        perform(urls, into: folder, mode: mode, scanned: scanned)
     }
 
     /// Moves or copies through the shared engine, which also records history and the undo journal.
-    private func perform(_ urls: [URL], into folder: String, mode: TransferMode, alsoCopyTo: String? = nil, anyFolder: Bool = false) {
-        do {
-            showResult(try service.perform(urls, into: folder, mode: mode, alsoCopyTo: alsoCopyTo, anyFolder: anyFolder, source: "app"))
-        } catch {
-            showError("\(mode == .copy ? "Copy" : "Move") failed", [error.localizedDescription], openConfig: false)
+    /// Runs in the background: the chooser is already gone and the focus back; the toast follows.
+    private func perform(_ urls: [URL], into folder: String, mode: TransferMode, alsoCopyTo: String? = nil,
+                         anyFolder: Bool = false, scanned: [FolderEntry]? = nil) {
+        let service = self.service
+        work({ try service.perform(urls, into: folder, mode: mode, alsoCopyTo: alsoCopyTo, anyFolder: anyFolder,
+                                   source: "app", scanned: scanned) }) { [weak self] result in
+            switch result {
+            case .success(let o): self?.showResult(o)
+            case .failure(let error): self?.showError("\(mode == .copy ? "Copy" : "Move") failed", [error.localizedDescription], openConfig: false)
+            }
+        }
+    }
+
+    /// `job` on the work queue, `then` with its result on the main thread.
+    private func work<T>(_ job: @escaping () throws -> T, then: @escaping (Result<T, Error>) -> Void) {
+        workQueue.async {
+            let result = Result { try job() }
+            DispatchQueue.main.async { then(result) }
         }
     }
 
     /// Trash spot: to the Trash at once; the toast's Undo (or Undo Last Drop) puts everything back.
     private func trash(_ urls: [URL]) {
         guard chooser == nil, !urls.isEmpty else { return }
-        do {
-            showResult(try service.trash(urls, source: "app"))
-        } catch {
-            showError("Not moved to the Trash", [error.localizedDescription], openConfig: false)
+        let service = self.service
+        work({ try service.trash(urls, source: "app") }) { [weak self] result in
+            switch result {
+            case .success(let o): self?.showResult(o)
+            case .failure(let error): self?.showError("Not moved to the Trash", [error.localizedDescription], openConfig: false)
+            }
         }
     }
 
@@ -302,9 +350,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// With an `id` (the toast's Undo button), only if that drop is still the most recent operation.
     private func undo(id: UUID?) {
+        let service = self.service
+        work({ try service.undo(id: id?.uuidString) }) { [weak self] in self?.showUndo($0) }
+    }
+
+    private func showUndo(_ result: Result<UndoReport, Error>) {
         let back: UndoReport
         do {
-            back = try service.undo(id: id?.uuidString)
+            back = try result.get()
         } catch let e as ServiceError where e == .nothingToUndo || e == .staleUndo {
             toast.show(title: "Nothing to undo", lines: ["Only the most recent operation can be undone, once."], isError: false, actions: [])
             return
@@ -317,7 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if back.items.count > 6 { lines.append("… and \(back.items.count - 6) more") }
         lines += back.failed.map { "✗ \($0.name): \($0.reason)" }
         let failed = !back.failed.isEmpty
-        let done = back.mode == .copy ? "Moved \(plural(back.items.count)) of the copies to the Trash" : "Moved \(plural(back.items.count)) back"
+        let done = back.mode == .copy ? "Moved \(Self.plural(back.items.count)) of the copies to the Trash" : "Moved \(Self.plural(back.items.count)) back"
         let restored = back.items.map { URL(fileURLWithPath: $0.to) }
         toast.show(title: failed ? "Undo incomplete" : done, lines: lines, isError: failed,
                    actions: restored.isEmpty || back.mode == .copy ? [] : [.init(title: "Reveal") {
@@ -328,14 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showResult(_ o: SortOutcome) {
         let r = o.result
         if !r.identical.isEmpty { return showIdentical(o) }
-        var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
-        if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
-        lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
-        lines += extraLines(r)
-        let failed = !r.failures.isEmpty || !r.extraFailures.isEmpty
-        let title = r.failures.isEmpty
-            ? (o.display == SortService.trashName ? "Moved \(plural(r.moved.count)) to the Trash" : "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)")
-            : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
+        let (title, lines, failed) = Self.resultText(o)
         var actions: [SortToast.Action] = []
         if !r.moves.isEmpty {
             actions.append(.init(title: "Undo") { [weak self] in self?.undo(id: o.id) })
@@ -344,15 +390,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toast.show(title: title, lines: lines, isError: failed, actions: actions)
     }
 
+    /// Title and lines of the toast after a drop; also drawn for the help images.
+    static func resultText(_ o: SortOutcome) -> (title: String, lines: [String], failed: Bool) {
+        let r = o.result
+        var lines = r.moved.prefix(6).map { "→ " + $0.lastPathComponent }
+        if r.moved.count > 6 { lines.append("… and \(r.moved.count - 6) more") }
+        lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
+        lines += extraLines(r)
+        let failed = !r.failures.isEmpty || !r.extraFailures.isEmpty
+        let title = r.failures.isEmpty
+            ? (o.display == SortService.trashName ? "Moved \(plural(r.moved.count)) to the Trash" : "\(r.mode.pastTense) \(plural(r.moved.count)) to \(o.display)")
+            : "\(r.failures.count) of \(r.moved.count + r.failures.count) item(s) failed, \(r.mode.pastTense.lowercased()) \(r.moved.count)"
+        return (title, lines, failed)
+    }
+
     /// What happened in the "also copy to" folder, for the toasts.
-    private func extraLines(_ r: MoveResult) -> [String] {
+    private static func extraLines(_ r: MoveResult) -> [String] {
         guard let first = r.extraCopies.first?.destination ?? r.extraSkipped.first?.identicalTo else {
             return r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
         }
         let folder = first.deletingLastPathComponent().lastPathComponent
         var lines: [String] = []
-        if !r.extraCopies.isEmpty { lines.append("+ \(plural(r.extraCopies.count)) also copied to \(folder)") }
-        if !r.extraSkipped.isEmpty { lines.append("= \(plural(r.extraSkipped.count)) already in \(folder), not copied again") }
+        if !r.extraCopies.isEmpty { lines.append("+ \(Self.plural(r.extraCopies.count)) also copied to \(folder)") }
+        if !r.extraSkipped.isEmpty { lines.append("= \(Self.plural(r.extraSkipped.count)) already in \(folder), not copied again") }
         return lines + r.extraFailures.map { "✗ extra copy of \($0.name): \($0.reason)" }
     }
 
@@ -364,7 +424,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var lines = twins.prefix(6).map { "= \($0.source.lastPathComponent) is identical to \($0.identicalTo!.lastPathComponent)" }
         if twins.count > 6 { lines.append("… and \(twins.count - 6) more") }
         let others = r.moves.count - twins.count
-        if others > 0 { lines.append("\(r.mode.pastTense) \(plural(others)) without a twin.") }
+        if others > 0 { lines.append("\(r.mode.pastTense) \(Self.plural(others)) without a twin.") }
         lines += r.failures.map { "✗ \($0.name): \($0.reason)" }
         let title = "\(twins.count) identical file\(twins.count == 1 ? "" : "s") already in \(o.display)"
         toast.show(title: title, lines: lines, isError: false, isWarning: true, actions: [
@@ -375,9 +435,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func deleteIdentical(_ o: SortOutcome) {
+        let service = self.service
+        work({ try service.removeIdentical(id: o.id.uuidString) }) { [weak self] in self?.showRemovedIdentical($0) }
+    }
+
+    private func showRemovedIdentical(_ result: Result<[ItemReport], Error>) {
         do {
-            let removed = try service.removeIdentical(id: o.id.uuidString)
-            toast.show(title: "Moved \(plural(removed.count)) to the Trash", lines: removed.prefix(6).map {
+            let removed = try result.get()
+            toast.show(title: "Moved \(Self.plural(removed.count)) to the Trash", lines: removed.prefix(6).map {
                 "✕ " + ($0.from as NSString).lastPathComponent + " (same as " + (($0.identicalTo ?? "") as NSString).lastPathComponent + ")"
             }, isError: false, actions: [])
         } catch let e as ServiceError where e == .staleUndo || e == .nothingToUndo {
@@ -496,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         exit(1)
     }
 
-    private func plural(_ n: Int) -> String { "\(n) item\(n == 1 ? "" : "s")" }
+    private static func plural(_ n: Int) -> String { "\(n) item\(n == 1 ? "" : "s")" }
 
     // MARK: Menus
 
@@ -564,6 +629,11 @@ extension AppDelegate: NSMenuItemValidation {
 }
 
 let app = NSApplication.shared
+if let flag = CommandLine.arguments.firstIndex(of: HelpImages.flag) {
+    // Hidden: draws the images for docs/user and exits (scripts/make-help-images.sh).
+    app.setActivationPolicy(.accessory)
+    HelpImages.main(output: CommandLine.arguments.dropFirst(flag + 1).first)
+}
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)

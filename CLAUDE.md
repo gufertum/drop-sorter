@@ -5,7 +5,10 @@ A general-purpose file mover: a shelf shown while Finder is active takes dropped
 into one of the configured target folders (or a folder inside one), chosen with a name-based suggestion
 and a filter. Keep docs and UI free of any particular notes app; say "target folder", not "vault". The repository also contains Drop
 Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter generates, updates and adopts.
-User docs: `docs/user/*.md` (single source for the app's offline help and the future website, #6);
+Open source under the MIT License (`LICENSE`), not sold. Forgejo is the main repository; a Forgejo push
+mirror publishes it to a public GitHub repository, so everything committed is public: no secrets and
+no personal data in commits.
+User docs: `docs/user/*.md` (single source for the app's in-app help and a future website);
 developer docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
 Original concept (written for an Obsidian vault, before the app became general purpose): https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 
@@ -39,6 +42,9 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - Host architecture only: the Command Line Tools lack the x86_64 Swift compatibility libraries.
 - UI changes cannot be verified with `screencapture` from a terminal without Screen Recording
   permission. Check window presence with `CGWindowListCopyWindowInfo` and do a manual test.
+  To look at a window, render it: `scripts/make-help-images.sh` (after `./build.sh`) runs the hidden
+  `--render-help-images` mode (`HelpImages.swift`), which draws shelf, chooser, toast and Settings
+  off-screen with `cacheDisplay` into `docs/user/images`.
 
 ## Design rules
 
@@ -63,8 +69,12 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
 - **Folder ids are full paths** (`SorterConfig.folderID`); people see `FolderEntry.display` (target name +
   path inside). Config entries are full paths (`~/` allowed); the old `base` key is converted on load
   (`legacyBase`), history keys too (`History.rebase`). Never reintroduce base-relative paths.
-- The target folders are rescanned on every drop (5,500 folders: 0.4 s incl. matching), so there is no FSEvents
-  watcher. The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
+- The target folders are scanned fresh for every drop, in parallel per target and per entry (15,000
+  folders / 115,000 files: 2.2 s -> 0.8 s), so there is no FSEvents watcher. The app starts the scan in the
+  background when a drag enters the shelf (`FolderPrefetch`, reused only for the same targets and at most
+  30 s old); the chooser opens at once and fills in. Return hands the chooser's list to
+  `SortService.perform(scanned:)`, which runs on the app's work queue, never on the main thread.
+  The config file is re-read when its modification date changed (on drop, shelf slide-in, Settings).
 - The menu-bar icon does not appear in `CGWindowListCopyWindowInfo` on current macOS; check it by hand.
 - **Index performance**: keep per-file work cheap in `FolderIndex.scan` (byte-wise path math against
   the `realpath` spelling of the root, ASCII fast path in `Tokenizer.fold`). Measure with a large
@@ -88,6 +98,13 @@ scripts/make-signing-identity.sh   # once: stable signing identity, picked up by
   fails on broken links and on undocumented config keys, CLI commands, MCP tools and rename tokens.
   `docs/user` uses only the Markdown subset `Tools/make-help/Markdown.swift` renders (no HTML, no nested
   lists, no links inside code); build.sh renders it into `Contents/Resources/Help`.
+- **Help images are rendered by the app, never screenshots**: `scripts/make-help-images.sh` rewrites
+  `docs/user/images` (light `x.png`, dark `x-dark.png`, @2x; committed, so Forgejo and the website show
+  them). Run it after a visible UI change and commit the result. It sets `CFFIXED_USER_HOME` to an
+  empty temporary folder; render mode refuses to run without it, so the sample tree never touches a real
+  home. Off-screen, glass and blur draw nothing: render mode flattens `NSVisualEffectView`s and puts a
+  plain stand-in over the Settings tab bar. `![alt](images/x.png)` only on a line of its own;
+  DocsTests checks alt text, existence and unused files.
 - Toasts are custom non-activating `NSPanel`s, not `UNUserNotificationCenter`.
 - Keep the token list in `Renamer.swift` and the table in docs/DROP-MOVER.md in sync. Keep the scoring
   table in README.md in sync with `Matcher.score`.

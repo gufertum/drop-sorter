@@ -7,24 +7,43 @@ active app, and slides away shortly after another app becomes active (0.4 second
 It also shows over the bare desktop unless you turn that off.
 
 When you open Drop Sorter (at launch, from Spotlight, Finder or the Dock, or with **Show Shelf** in the
-menu-bar menu), the shelf shows even when Finder is not active, until you switch to another app than Finder. ✕ hides
-it at once.
+menu-bar menu), the shelf is pinned: it shows even when Finder is not active, until you switch to another
+app than Finder. A pinned shelf says **pinned** next to its title, and ✕ hides it at once.
 
 With several displays the shelf follows Finder: click a Finder window on another display and the shelf
 moves there within a second. Over the bare desktop it stays where it was.
 
+![The shelf, pinned: the big Drop to sort spot, three favorite spots and the Trash spot](images/shelf.png)
+
 From top to bottom the shelf has:
 
 - **The main spot**: drop here to choose a folder in the chooser.
-- **Favorite spots**: one coloured spot per favorite; dropping there moves at once.
+- **Favorite spots**: one coloured spot per favorite; dropping there moves at once. A spot that always
+  copies shows a copy symbol instead of the star.
 - **The Trash spot** (can be turned off): moves the items to the Trash, with Undo.
 - **The gear**: Settings. A right-click anywhere on the shelf opens the menu.
+
+## The menu
+
+A right-click on the shelf and a click on the menu-bar icon open the same menu:
+
+- **Show Shelf** (menu-bar icon only): pins the shelf.
+- **Undo Last Drop**: says what it would undo, see [Undo](#undo).
+- **Settings…**, **Open Configuration File**, **Drop Sorter Help**.
+- The version, and **Quit Drop Sorter**.
 
 ## The chooser
 
 Dropping on the main spot opens the chooser. It shows the dropped items, a line about the suggestion
-("Clear match", "Unsure", "No hint in the name") and the list of folders, best match first. Folders
-with a rename rule show **rename** and a preview of the new names; favorites show ★.
+("Clear match", "Unsure", "No hint in the name") and the list of folders, best match first.
+
+![The chooser: the clear match Work/Clients/Acme/Invoices is selected; each folder shows its score and why](images/chooser.png)
+
+- Each folder that matches shows its score and the reasons below its name, for example
+  “acme” ≈ parent (see [How suggestions work](suggestions.md)).
+- Folders with a rename rule show **rename**, and the line below the list previews the new names for
+  the selected folder. Favorites show ★.
+- With ⌥ held while dropping, the chooser says **Copy** instead of **Sort**, and Return copies.
 
 | Key | Does |
 |---|---|
@@ -37,6 +56,11 @@ with a rename rule show **rename** and a preview of the new names; favorites sho
 
 A click outside the chooser also cancels. When the suggestion is not clear, nothing is selected, so a
 blind Return never puts files in the wrong place.
+
+With many folders the chooser may open with "Scanning the target folders…" for a moment. You can
+already type; the list fills in when the scan is done, and Return waits for it. Drop Sorter starts the
+scan as soon as you drag over the shelf, so usually the list is there when you drop. After Return the
+chooser closes at once; the move runs in the background and the message follows when it is done.
 
 ## Favorites
 
@@ -72,7 +96,9 @@ If an identical file is already there, an orange toast offers:
 
 ## Undo
 
-- The toast after each drop has **Undo**.
+![The toast after a drop: the new name, Undo and Reveal in Finder](images/toast.png)
+
+- The toast after each drop has **Undo**. It stays while the pointer is over it; an error stays longer.
 - **Undo Last Drop** in the shelf menu and the menu-bar menu undoes the most recent operation once,
   also after the toast is gone and also when some items of that drop failed. The menu item says what it
   would undo.

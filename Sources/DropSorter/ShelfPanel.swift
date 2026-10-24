@@ -205,11 +205,15 @@ final class ShelfPanel: NSPanel {
         layer.add(group, forKey: "pulse")
     }
 
+    /// The accent colour can change in System Settings; takes the current one.
+    func refreshFrameColor() {
+        frameView?.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
+    }
+
     /// Shows the shelf on `screen` (the Finder window's screen); nil keeps the current one. Already shown
     /// on another screen: it pops up on the new one.
     func slideIn(on screen: NSScreen? = nil) {
-        // The accent colour can change in System Settings; take the current one.
-        frameView?.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
+        refreshFrameColor()
         let moves = screen != nil && screen != targetScreen
         if let screen { targetScreen = screen }
         guard !isShown || moves else { return }

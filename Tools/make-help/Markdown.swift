@@ -2,10 +2,14 @@ import Foundation
 
 /// Renders the Markdown subset used in docs/user to HTML for the offline help: headings (with
 /// GitHub-style ids), paragraphs, `-` and `1.` lists with indented continuation lines, fenced code,
-/// pipe tables, and inline code, **bold** and [links](x.md#a). Links to `.md` files become `.html`.
-/// Anything else is plain text, HTML-escaped. No dependencies, so build.sh stays plain swiftc.
+/// pipe tables, images on a line of their own, and inline code, **bold** and [links](x.md#a). Links to
+/// `.md` files become `.html`. Anything else is plain text, HTML-escaped. No dependencies, so build.sh
+/// stays plain swiftc.
 enum Markdown {
-    static func html(_ source: String) -> String {
+    /// `![alt](images/x.png)` becomes a figure. Images are drawn at @2x (Drop Sorter's
+    /// --render-help-images), so they show at half their pixel size, never wider than the page.
+    /// `hasDarkVariant(src)` says whether `images/x-dark.png` exists; then it is used in Dark Mode.
+    static func html(_ source: String, hasDarkVariant: (String) -> Bool = { _ in false }) -> String {
         var out: [String] = []
         let lines = source.components(separatedBy: "\n")
         var i = 0
@@ -32,6 +36,10 @@ enum Markdown {
                 i += 1
                 let cls = lang.isEmpty ? "" : " class=\"language-\(escape(lang))\""
                 out.append("<pre><code\(cls)>\(escape(code.joined(separator: "\n")))</code></pre>")
+            } else if let image = image(trimmed) {
+                flushParagraph()
+                out.append(figure(image, dark: hasDarkVariant(image.src)))
+                i += 1
             } else if let level = headingLevel(trimmed) {
                 flushParagraph()
                 let text = String(trimmed.dropFirst(level + 1))
@@ -63,8 +71,10 @@ enum Markdown {
                     }
                     items.append("<li>\(inline(text))</li>")
                 }
-                let tag = ordered ? "ol" : "ul"
-                out.append("<\(tag)>" + items.joined() + "</\(tag)>")
+                // An ordered list continues its numbering after an image or a paragraph: `3.` starts at 3.
+                let start = ordered ? Int(line.prefix { $0.isNumber }) ?? 1 : 1
+                let open = ordered ? (start == 1 ? "<ol>" : "<ol start=\"\(start)\">") : "<ul>"
+                out.append(open + items.joined() + (ordered ? "</ol>" : "</ul>"))
             } else {
                 paragraph.append(trimmed)
                 i += 1
@@ -87,10 +97,12 @@ enum Markdown {
         })
     }
 
-    /// Relative links in the source: (file or "", anchor or nil), external ones left out.
+    /// Relative links in the source: (file or "", anchor or nil), external ones and images left out.
     static func links(_ source: String) -> [(file: String, anchor: String?)] {
         var result: [(String, String?)] = []
-        var rest = Substring(source)
+        let text = source.components(separatedBy: "\n")
+            .filter { image($0.trimmingCharacters(in: .whitespaces)) == nil }.joined(separator: "\n")
+        var rest = Substring(text)
         while let open = rest.range(of: "](") {
             rest = rest[open.upperBound...]
             guard let close = rest.firstIndex(of: ")") else { break }
@@ -101,6 +113,17 @@ enum Markdown {
             }
         }
         return result
+    }
+
+    /// Images on a line of their own, in order.
+    static func images(_ source: String) -> [(alt: String, src: String)] {
+        source.components(separatedBy: "\n").compactMap { image($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// `images/x.png` -> `images/x-dark.png`.
+    static func darkName(_ src: String) -> String {
+        let ext = (src as NSString).pathExtension
+        return (src as NSString).deletingPathExtension + "-dark" + (ext.isEmpty ? "" : "." + ext)
     }
 
     static func headingIDs(_ source: String) -> Set<String> {
@@ -159,6 +182,22 @@ enum Markdown {
     }
 
     // MARK: Blocks
+
+    /// `![alt](src)` as the whole (trimmed) line.
+    private static func image(_ line: String) -> (alt: String, src: String)? {
+        guard line.hasPrefix("!["), line.hasSuffix(")"), let mid = line.range(of: "](") else { return nil }
+        let alt = String(line[line.index(line.startIndex, offsetBy: 2)..<mid.lowerBound])
+        let src = String(line[mid.upperBound..<line.index(before: line.endIndex)])
+        guard !alt.contains("]"), !src.isEmpty, !src.contains(where: { $0 == " " || $0 == ")" }) else { return nil }
+        return (alt, src)
+    }
+
+    private static func figure(_ image: (alt: String, src: String), dark: Bool) -> String {
+        let img = "<img src=\"\(escape(image.src))\" srcset=\"\(escape(image.src)) 2x\" alt=\"\(escape(image.alt))\">"
+        guard dark else { return "<figure>\(img)</figure>" }
+        let source = "<source media=\"(prefers-color-scheme: dark)\" srcset=\"\(escape(darkName(image.src))) 2x\">"
+        return "<figure><picture>\(source)\(img)</picture></figure>"
+    }
 
     private static func headingLevel(_ line: String) -> Int? {
         let hashes = line.prefix { $0 == "#" }.count

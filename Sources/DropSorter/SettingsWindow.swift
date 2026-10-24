@@ -630,8 +630,11 @@ final class SettingsWindow: NSWindowController, NSWindowDelegate, NSTextFieldDel
 
     // MARK: Open at login (system setting, not part of the config file)
 
+    /// The help images replace it, so they never show this Mac's login item.
+    static var loginStatus: () -> SMAppService.Status = { SMAppService.mainApp.status }
+
     private func refreshLogin() {
-        let status = SMAppService.mainApp.status
+        let status = Self.loginStatus()
         loginCheck.state = status == .enabled ? .on : .off
         switch status {
         case .requiresApproval: loginNote.stringValue = "Waiting for approval in System Settings › General › Login Items."

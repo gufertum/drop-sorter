@@ -5,7 +5,8 @@
 - Is Drop Sorter running? Open it again (Spotlight, Finder, Dock): the shelf shows and flashes.
 - The shelf shows while **Finder** is the active app. Click a Finder window or the desktop.
 - With **Also show it on the bare desktop** off, it needs an open Finder window.
-- It sits at the bottom right of the main screen.
+- It sits at the bottom right of the screen with the front Finder window (over the bare desktop: where
+  it was last).
 
 ## I cannot see the menu-bar icon
 
