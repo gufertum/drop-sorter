@@ -2,11 +2,23 @@
 
 ## Install
 
-1. Move **Drop Sorter.app** to the Applications folder.
-2. Open it. Drop Sorter has no Dock icon: it lives in the shelf at the bottom right of the screen and
+Drop Sorter needs macOS 13 or later on a Mac with Apple silicon.
+
+1. Download `DropSorter-X.Y.Z-arm64.zip` from the releases page of the Drop Sorter repository and
+   double-click it. Finder unpacks **Drop Sorter.app**.
+2. Move **Drop Sorter.app** to the Applications folder.
+3. Drop Sorter is free and not notarized by Apple, so macOS refuses to open a downloaded copy at first.
+   Remove the download mark once, in Terminal:
+
+   `xattr -dr com.apple.quarantine "/Applications/Drop Sorter.app"`
+
+   This also covers the Drop Mover apps Drop Sorter creates later. Without Terminal: open the app,
+   click **Done** in the warning, then click **Open Anyway** in **System Settings › Privacy & Security**.
+4. Open it. Drop Sorter has no Dock icon: it lives in the shelf at the bottom right of the screen and
    in the menu bar (the tray icon).
 
-Drop Sorter needs macOS 13 or later on a Mac with Apple silicon.
+To update, quit Drop Sorter, replace the app in Applications with the new one and repeat step 3. Your
+settings and history stay in place.
 
 ## First launch
 

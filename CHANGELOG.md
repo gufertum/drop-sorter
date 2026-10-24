@@ -3,12 +3,10 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-25
 
+- #38 Release package: zip of Drop Sorter.app on the release page, install steps in the help
 - #36 Open source under the MIT License, mirrored to GitHub
-
-## [1.1.0] - 2026-10-21
-
 - #31 Images in the help, rendered by the app (light and dark); help pages reviewed against 1.0.0
 - #27 Faster chooser: opens at once, folders scanned in the background and in parallel; Return closes it at once
 
