@@ -230,6 +230,7 @@ shelf:
   showOnDesktop: true
   hideDelayMs: 400
   trash: true        # Trash spot at the bottom of the shelf
+  pinned: false      # true: shelf stays on screen over every app
 menuBarIcon: true    # default; false hides the icon
 api:                 # REST API, Settings › Advanced › API
   enabled: false

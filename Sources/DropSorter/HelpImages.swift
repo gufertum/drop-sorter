@@ -180,7 +180,7 @@ enum HelpImages {
             let panel = ShelfPanel(menu: NSMenu())
             panel.setFavorites(config.favorites, missing: [])
             panel.setTrash(config.shelf.trash)
-            panel.setPinned(true)
+            panel.setKeptPinned(true)
             panel.refreshFrameColor()
             return panel.contentView!
         }

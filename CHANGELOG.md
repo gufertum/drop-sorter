@@ -3,6 +3,10 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
+## [Unreleased]
+
+- #33 Pin the shelf over every app; drops from Mail and other apps that promise files
+
 ## [1.1.0] - 2026-10-21
 
 - #31 Images in the help, rendered by the app (light and dark); help pages reviewed against 1.0.0
