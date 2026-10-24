@@ -48,7 +48,8 @@ Esc, or a click outside the chooser, leaves the file where it was.
 ## Where things are
 
 - **Settings**: the gear on the shelf, a right-click on the shelf, or the menu-bar icon.
-- **Help**: Drop Sorter Help in the same menus, or ⌘? while Settings is open.
+- **Help**: Drop Sorter Help in the same menus, or ⌘? while Settings is open. It opens in a window of
+  its own; ⌘[ and ⌘] go back and forward, links to web pages open in your browser.
 - **Bring the shelf back**: open Drop Sorter again (Spotlight, Finder, Dock) or choose **Show Shelf**
   in the menu-bar icon's menu.
 

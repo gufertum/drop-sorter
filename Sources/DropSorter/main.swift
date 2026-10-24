@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var apiStatus = "off"
     private let dropAppManager = DropAppManager()
     private var settings: SettingsWindow?
+    private var help: HelpWindow?
     /// Modification date of the config file last read, to pick up hand edits.
     private var configDate: Date?
     /// The folder scan, started when a drag enters the shelf so the chooser has the list at the drop.
@@ -531,13 +532,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateShelf()
     }
 
-    /// The offline help: docs/user rendered to HTML by build.sh, opened in the default browser.
+    /// The offline help: docs/user rendered to HTML by build.sh, shown in the help window.
     @objc private func showHelp() {
-        guard let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Help") else {
+        guard let folder = Bundle.main.url(forResource: "Help", withExtension: nil),
+              FileManager.default.fileExists(atPath: folder.appendingPathComponent("index.html").path) else {
             showError("Help is missing", ["This build has no Contents/Resources/Help. Rebuild with build.sh."], openConfig: false)
             return
         }
-        NSWorkspace.shared.open(index)
+        if help == nil { help = HelpWindow(folder: folder) }
+        help?.show()
     }
 
     @objc private func openConfig() {
@@ -594,6 +597,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let windowItem = NSMenuItem()
         windowItem.submenu = NSMenu(title: "Window")
         windowItem.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // Help window: through the responder chain, so only active there.
+        windowItem.submenu?.addItem(withTitle: "Back", action: #selector(HelpWindow.goBack(_:)), keyEquivalent: "[")
+        windowItem.submenu?.addItem(withTitle: "Forward", action: #selector(HelpWindow.goForward(_:)), keyEquivalent: "]")
         main.addItem(windowItem)
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
