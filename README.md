@@ -15,7 +15,9 @@ and history are in this repository now.
 
 Version and changes per release: [CHANGELOG.md](CHANGELOG.md).
 
-Tasks live in Forgejo issues: https://git.sudo.li/lab/drop-sorter/issues
+Drop Sorter is free and open source under the [MIT License](LICENSE). Development happens in a
+Forgejo repository (tasks live in its issues: https://git.sudo.li/lab/drop-sorter/issues); the
+public repository on GitHub is a read-only mirror of it.
 
 ## Build
 
