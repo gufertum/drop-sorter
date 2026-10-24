@@ -40,6 +40,11 @@ open "build/Drop Sorter.app"
   its executable.
 - Release: bump `VERSION`, date the entry in `CHANGELOG.md` (`## [1.1.0] - 2026-11-02`), merge `develop`
   into `main`, then `scripts/tag-release.sh` and `git push origin vX.Y.Z`.
+- Package: `scripts/make-release.sh` on the tagged commit builds `build/release/DropSorter-X.Y.Z-arm64.zip`
+  and its `.sha256`, and checks that the zip unpacks to a correctly signed app. Attach both to the release
+  on Forgejo and on GitHub (`gh release create vX.Y.Z --repo gufertum/drop-sorter --verify-tag ...`; the push
+  mirror carries tags, not release files). The app is signed with the local identity, not with a
+  Developer ID, and not notarized; the install steps in docs/user/getting-started.md cover that.
 
 ## Use
 
