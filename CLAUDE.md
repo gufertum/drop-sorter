@@ -5,7 +5,10 @@ A general-purpose file mover: a shelf shown while Finder is active takes dropped
 into one of the configured target folders (or a folder inside one), chosen with a name-based suggestion
 and a filter. Keep docs and UI free of any particular notes app; say "target folder", not "vault". The repository also contains Drop
 Mover (moved here from `lab/drop-mover` with its history), which Drop Sorter generates, updates and adopts.
-User docs: `docs/user/*.md` (single source for the app's offline help and the future website, #6);
+Open source under the MIT License (`LICENSE`), not sold. Forgejo is the main repository; a Forgejo push
+mirror publishes it to a public GitHub repository, so everything committed is public: no secrets and
+no personal data in commits.
+User docs: `docs/user/*.md` (single source for the app's in-app help and a future website);
 developer docs: README.md, docs/DROP-MOVER.md, docs/MIGRATION.md (old Automator apps -> Drop Mover).
 Original concept (written for an Obsidian vault, before the app became general purpose): https://claude.ai/artifact/E5ebbhwR7Yygn2gr8mmv1h
 

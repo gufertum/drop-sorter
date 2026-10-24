@@ -7,6 +7,8 @@ one), and they move there, renamed if you want, with Undo one click away.
 Drop Mover is its little sibling: a standalone app for one fixed folder. Drop files on its icon in
 Finder and they move, without Drop Sorter running.
 
+Drop Sorter is free and open source (MIT License).
+
 ## Contents
 
 - [Getting started](getting-started.md): install, first launch, your first drop
