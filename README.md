@@ -1,15 +1,62 @@
 # Drop Sorter
 
-A general-purpose file mover for macOS. Pick the folders that take files, such as your documents, an
-archive or a project folder; each of them, and every folder inside it, becomes a target. A shelf slides in while Finder is the active
-app. Drop files or folders on it and a chooser suggests the target folder from the file names. Type
-to narrow the list, press Return to move, Esc to leave everything where it was. Favorites get their
-own drop spot on the shelf and move at once. Rename rules give items moved into chosen folders a
-date prefix (or any other naming).
+**A drop shelf for macOS that puts files where they belong.**
 
-Drop Sorter also builds and manages **Drop Mover** apps, standalone drop targets for one fixed folder
-(see [docs/DROP-MOVER.md](docs/DROP-MOVER.md)). Drop Mover used to live in `lab/drop-mover`; its code
-and history are in this repository now.
+Drag files onto the shelf at the bottom right of the screen. Drop Sorter suggests the folder they
+belong in, from the file names, your folder names and what you sorted before. Press Return and they
+move there, renamed if you like (for example with a date prefix). Undo is one click away. Free and
+open source, no account, nothing leaves your Mac.
+
+![Drop Sorter in action: a file dropped on the shelf, the chooser preselects the right folder, Return moves it; two more files dropped on favorite spots](docs/media/demo.gif)
+
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/user/images/shelf-dark.png"><img src="docs/user/images/shelf.png" alt="The shelf: a big Drop to sort spot, favorite spots and a Trash spot" width="230"></picture>
+  &nbsp;
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/user/images/chooser-dark.png"><img src="docs/user/images/chooser.png" alt="The chooser: the clear match for an Acme invoice is selected, each folder shows its score and why" width="480"></picture>
+</p>
+
+## What it does
+
+- **Shelf**: slides in while Finder is the active app; drop files or folders on it.
+- **Suggestions you can trust**: a folder is preselected only when the match is clear, so a blind
+  Return never misfiles. Otherwise type a few letters to filter, ↑ ↓ to pick, ⇥ to step into a folder.
+- **Favorites**: folders you use often get their own coloured spot and move at once, without the chooser.
+- **Rename rules** per folder: date prefixes or any other pattern.
+- **Safe moves**: never overwrites (`-2`, `-3` suffixes), copy with ⌥, Undo for every drop, Trash spot.
+- **Drop Mover apps**: standalone apps for one fixed folder: drop files on their icon in Finder or the Dock.
+- **Automation**: command line tool `dropsorter`, MCP server for AI agents, REST API on localhost (off
+  by default).
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/user/images/toast-dark.png"><img src="docs/user/images/toast.png" alt="The message after a drop: new name, Undo and Reveal in Finder" width="432"></picture>
+
+## Install
+
+Needs macOS 13 or later on a Mac with Apple silicon.
+
+1. Download `DropSorter-X.Y.Z-arm64.zip` from the
+   [latest release](https://github.com/gufertum/drop-sorter/releases/latest) and double-click it.
+2. Move **Drop Sorter.app** to the Applications folder.
+3. Drop Sorter is not notarized by Apple, so remove the download mark once in Terminal:
+
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Drop Sorter.app"
+   ```
+
+4. Open Drop Sorter and add your target folders in the Settings window that opens. Then open a Finder
+   window: the shelf slides in.
+
+The [user guide](docs/user/index.md) (also built into the app as its help) explains every feature.
+To build from source, see [Build](#build).
+
+## About this repository
+
+Drop Sorter is a general-purpose file mover: each target folder, and every folder inside it, can take
+files. It also builds and manages **Drop Mover** apps (see [docs/DROP-MOVER.md](docs/DROP-MOVER.md)).
+Drop Mover used to live in `lab/drop-mover`; its code and history are in this repository now.
+
+The demo movie (`docs/media/demo.gif`) is a screen recording of the app on a made-up user
+(`scripts/make-demo-home.sh DIR` sets one up and starts the app on it), cut and converted with ffmpeg.
+Check every frame for personal data (Finder sidebar, menu bar, notifications) before committing one.
 
 ## Status
 
