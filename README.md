@@ -18,6 +18,8 @@ open source, no account, nothing leaves your Mac.
 ## What it does
 
 - **Shelf**: slides in while Finder is the active app; drop files or folders on it.
+- **Drop from any app**: pin the shelf to keep it on screen over every app, then drag attachments or
+  whole messages from Mail (or files from any other app) onto it.
 - **Suggestions you can trust**: a folder is preselected only when the match is clear, so a blind
   Return never misfiles. Otherwise type a few letters to filter, ↑ ↓ to pick, ⇥ to step into a folder.
 - **Favorites**: folders you use often get their own coloured spot and move at once, without the chooser.

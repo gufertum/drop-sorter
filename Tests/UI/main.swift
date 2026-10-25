@@ -107,5 +107,12 @@ check(chosen == ["40 Resources/Recipes"], "typed filter kept when the list arriv
 
 // Long paths need room: the chooser is at least 900 pt wide before present() fits it to the screen.
 check(typed.frame.width >= 900 && typed.frame.height >= 560, "chooser size: \(typed.frame.size)")
+// Help window: pages, images and anchors inside the help folder stay in the window; the rest goes out.
+let helpFolder = URL(fileURLWithPath: "/Applications/Drop Sorter.app/Contents/Resources/Help")
+check(HelpWindow.isInside(helpFolder.appendingPathComponent("settings.html"), folder: helpFolder), "help page inside")
+check(HelpWindow.isInside(URL(string: "file:///Applications/Drop%20Sorter.app/Contents/Resources/Help/images/shelf.png")!, folder: helpFolder), "help image inside")
+check(!HelpWindow.isInside(URL(fileURLWithPath: "/Applications/Drop Sorter.app/Contents/Resources/Help2/x.html"), folder: helpFolder), "sibling folder outside")
+check(!HelpWindow.isInside(helpFolder.appendingPathComponent("../config.json"), folder: helpFolder), "parent outside")
+check(!HelpWindow.isInside(URL(string: "https://example.com/")!, folder: helpFolder), "web link outside")
 
 if failures == 0 { print("All UI checks passed.") } else { print("\(failures) UI failure(s)"); exit(1) }
