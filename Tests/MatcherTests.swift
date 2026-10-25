@@ -98,4 +98,27 @@ func matcherTests() throws {
     eq(Matcher.rank(banks, query: "mem").map(\.path), ["50 Members"])
     eq(Matcher.rank(banks, query: "bank ubs").map(\.path), ["40 Banks/UBS"])
     eq(Matcher.filterScore("30 areas/finance/invoices/", ["zzz"]), nil)
+
+    clientTests()
+}
+
+/// #40: a generic word learned for one client must not win over another client's name.
+private func clientTests() {
+    let clients = ["Work/Clients/Acme", "Work/Clients/Globex", "Work/Clients/Globex/Meeting Notes", "Work/Taxes/2026"]
+        .map { FolderEntry(path: $0) }
+        + [FolderEntry(path: "Work/Clients/Acme/Invoices", files: ["2026-10-01_Acme invoice September.pdf"]),
+           FolderEntry(path: "Work/Clients/Globex/Invoices")]
+    var history = History()
+    history.record(tokens: ["acme", "invoice"], folder: "Work/Clients/Acme/Invoices")
+
+    let globex = Matcher.suggest([file("Globex invoice 2026-10.pdf")], folders: clients, history: history)
+    eq(globex.preselected, nil)
+    check(globex.ranked.prefix(3).contains { $0.path == "Work/Clients/Globex/Invoices" }, "\(globex.ranked.map(\.path))")
+
+    // The client the folder was learned for still gets its clear match.
+    eq(Matcher.suggest([file("Acme invoice October.pdf")], folders: clients, history: history).preselected,
+       "Work/Clients/Acme/Invoices")
+    // A weak namesake (score below minScore) does not block: "2026" names Taxes/2026 only by the year.
+    eq(Matcher.suggest([file("Acme invoice 2026-10.pdf")], folders: clients, history: history).preselected,
+       "Work/Clients/Acme/Invoices")
 }
