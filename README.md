@@ -244,7 +244,9 @@ removed. Each word is compared with each folder:
 
 The folder index lists up to 300 file names per folder for the name-shape signal (100,000 files in
 5,500 folders: about 1.2 s; typical folders: a few hundredths). With several items the scores are averaged. A folder is preselected only when it scores at least
-`suggest.minScore` (3) and leads the next one by `suggest.minMargin` (1); otherwise Return does nothing
+`suggest.minScore` (3) and leads the next one by `suggest.minMargin` (1), and no word of the name
+that it does not explain (name, parent, alias, file word, learned) names another folder scoring at least
+`minScore` (#40: `Globex invoice` with learned `invoice` for Acme/Invoices); otherwise Return does nothing
 until a folder is picked. After typing, each space-separated term must appear in the path as one piece
 (`embr` finds `Cembra`, nothing else); matches at the start of a word rank first.
 

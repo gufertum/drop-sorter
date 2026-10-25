@@ -5,6 +5,7 @@ Versions follow [semver](https://semver.org). The version lives in `VERSION`; ea
 
 ## [Unreleased]
 
+- #40 No preselection when a word of the name points to another strong folder (Globex invoice no longer goes to Acme/Invoices)
 - #39 README: intro, demo movie, screenshots, quick install; `scripts/make-demo-home.sh` for recording
 
 ## [1.1.0] - 2026-10-25
