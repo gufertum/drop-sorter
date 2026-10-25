@@ -20,12 +20,17 @@ final class ShelfPanel: NSPanel {
     var onDragOver: ((Bool) -> Void)?
     var onClose: (() -> Void)?
     var onSettings: (() -> Void)?
+    /// The pin button: keep the shelf on screen over every app (`shelf.pinned`), or not.
+    var onPinToggle: ((Bool) -> Void)?
+    /// A promised file (Mail, ...) could not be received.
+    var onReceiveFailed: ((Error) -> Void)?
     private let spot = DropSpot(symbol: "tray.and.arrow.down", title: "Drop to sort")
     private let favoriteStack = NSStackView()
     private var favoriteSpots: [DropSpot] = []
     private let closeButton = NSButton()
     private let settingsButton = NSButton()
-    private let pinLabel = NSTextField(labelWithString: "pinned")
+    private let pinButton = NSButton()
+    private var keptPinned = false
     private var visibleGeneration = 0
     private weak var frameView: NSView?
     private let glow: GlowContainer
@@ -58,8 +63,10 @@ final class ShelfPanel: NSPanel {
         let title = NSTextField(labelWithString: "Drop Sorter")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.textColor = .secondaryLabelColor
-        pinLabel.font = .systemFont(ofSize: 9, weight: .medium)
-        pinLabel.textColor = .tertiaryLabelColor
+        pinButton.bezelStyle = .inline
+        pinButton.isBordered = false
+        pinButton.target = self
+        pinButton.action = #selector(pinClicked)
         closeButton.bezelStyle = .inline
         closeButton.isBordered = false
         closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Close shelf")
@@ -74,17 +81,20 @@ final class ShelfPanel: NSPanel {
         settingsButton.action = #selector(settingsClicked)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let header = NSStackView(views: [title, pinLabel, spacer, settingsButton, closeButton])
+        let header = NSStackView(views: [title, spacer, pinButton, settingsButton, closeButton])
         header.spacing = 4
 
-        spot.onDrop = { [weak self] urls, copy in self?.onDrop?(urls, copy ? .copy : .move) }
+        spot.onDrop = { [weak self] urls, copy, _ in self?.onDrop?(urls, copy ? .copy : .move) }
         spot.onHover = { [weak self] in self?.onDragOver?($0) }
+        spot.onReceiveFailed = { [weak self] in self?.onReceiveFailed?($0) }
 
         favoriteStack.orientation = .vertical
         favoriteStack.spacing = 6
         favoriteStack.translatesAutoresizingMaskIntoConstraints = false
 
-        trashSpot.onDrop = { [weak self] urls, _ in self?.onDropTrash?(urls) }
+        // Received files (Mail, ...) are fresh copies; trashing them makes no sense.
+        trashSpot.acceptsPromises = false
+        trashSpot.onDrop = { [weak self] urls, _, _ in self?.onDropTrash?(urls) }
         trashSpot.onHover = { [weak self] in self?.onDragOver?($0) }
         trashSpot.translatesAutoresizingMaskIntoConstraints = false
         let stack = NSStackView(views: [header, spot, favoriteStack, trashSpot])
@@ -110,6 +120,7 @@ final class ShelfPanel: NSPanel {
         ])
         contentView = glow
         setPinned(false)
+        setKeptPinned(false)
     }
 
     override var canBecomeKey: Bool { false }
@@ -147,8 +158,12 @@ final class ShelfPanel: NSPanel {
                 + (fav.alsoCopyTo.map { " · also copies to \($0)" } ?? "")
             f.missing = missing.contains(path)
             f.enabled = spot.enabled && !f.missing
-            f.onDrop = { [weak self] urls, copy in self?.onDropFavorite?(fav, urls, copy || fav.copy ? .copy : .move) }
+            // Received files are moved out of the staging folder, also into a favorite that copies.
+            f.onDrop = { [weak self] urls, copy, received in
+                self?.onDropFavorite?(fav, urls, copy || (fav.copy && !received) ? .copy : .move)
+            }
             f.onHover = { [weak self] in self?.onDragOver?($0) }
+            f.onReceiveFailed = { [weak self] in self?.onReceiveFailed?($0) }
             f.translatesAutoresizingMaskIntoConstraints = false
             favoriteStack.addArrangedSubview(f)
             f.widthAnchor.constraint(equalTo: favoriteStack.widthAnchor).isActive = true
@@ -162,10 +177,22 @@ final class ShelfPanel: NSPanel {
 
     @objc private func settingsClicked() { onSettings?() }
 
+    /// The launch pin (see AppDelegate.pinned): ✕ hides the shelf. Not offered while kept pinned.
     func setPinned(_ pinned: Bool) {
-        closeButton.isHidden = !pinned
-        pinLabel.isHidden = !pinned
+        closeButton.isHidden = !pinned || keptPinned
     }
+
+    /// `shelf.pinned`: the filled pin, in the accent colour.
+    func setKeptPinned(_ kept: Bool) {
+        keptPinned = kept
+        pinButton.image = NSImage(systemSymbolName: kept ? "pin.fill" : "pin", accessibilityDescription: kept ? "Unpin shelf" : "Pin shelf")
+        pinButton.contentTintColor = kept ? .controlAccentColor : .tertiaryLabelColor
+        pinButton.toolTip = kept ? "Pinned: the shelf stays on screen over every app. Click to unpin."
+            : "Pin: keep the shelf on screen over every app, e.g. to drop from Mail."
+        if kept { closeButton.isHidden = true }
+    }
+
+    @objc private func pinClicked() { onPinToggle?(!keptPinned) }
 
     @objc private func closeClicked() { onClose?() }
 
@@ -251,9 +278,19 @@ final class ShelfPanel: NSPanel {
 
 /// A drop spot: the large main spot, or a compact one-line favorite. Accepts file and folder URLs.
 final class DropSpot: NSView {
-    /// Items, and whether to copy (⌥ held while dropping).
-    var onDrop: (([URL], Bool) -> Void)?
+    /// Items, whether to copy (⌥ held, or the source allows only a copy), and whether the items were
+    /// received from file promises (Mail, ...) into the staging folder; those always come with copy false.
+    var onDrop: (([URL], Bool, Bool) -> Void)?
     var onHover: ((Bool) -> Void)?
+    var onReceiveFailed: ((Error) -> Void)?
+    /// File promises (Mail attachments and messages, ...) besides file URLs; off for the Trash spot.
+    var acceptsPromises = true {
+        didSet {
+            // registerForDraggedTypes adds to the registered types; start over.
+            unregisterDraggedTypes()
+            registerForDraggedTypes(acceptsPromises ? DroppedFiles.draggedTypes : [.fileURL])
+        }
+    }
     var enabled = true
     /// A favorite set to copy: the cursor shows the copy badge without ⌥.
     var alwaysCopy = false
@@ -274,7 +311,7 @@ final class DropSpot: NSView {
         self.compact = compact
         self.color = color
         super.init(frame: .zero)
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes(DroppedFiles.draggedTypes)
         wantsLayer = true
         layer?.masksToBounds = false
         layer?.shadowOffset = .zero
@@ -319,17 +356,20 @@ final class DropSpot: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard enabled else { return [] }
+        guard enabled, accepts(sender) else { return [] }
         highlighted = true
         onHover?(true)
-        return operation()
+        return operation(sender)
     }
     /// Re-evaluated while the mouse moves, so pressing ⌥ mid-drag switches the cursor badge.
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        enabled ? operation() : []
+        enabled && accepts(sender) ? operation(sender) : []
     }
-    private func operation() -> NSDragOperation {
-        alwaysCopy || Self.optionHeld ? .copy : .move
+    private func accepts(_ sender: NSDraggingInfo) -> Bool {
+        acceptsPromises || !DroppedFiles.fileURLs(sender.draggingPasteboard).isEmpty
+    }
+    private func operation(_ sender: NSDraggingInfo) -> NSDragOperation {
+        DroppedFiles.operation(sender, wanted: alwaysCopy || Self.optionHeld ? .copy : .move)
     }
     static var optionHeld: Bool { NSEvent.modifierFlags.contains(.option) }
     override func draggingExited(_ sender: NSDraggingInfo?) {
@@ -342,12 +382,22 @@ final class DropSpot: NSView {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         highlighted = false
         onHover?(false)
-        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-                                                         options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        guard enabled, !urls.isEmpty else { return false }
-        let copy = Self.optionHeld
+        guard enabled else { return false }
+        let pasteboard = sender.draggingPasteboard
+        let urls = DroppedFiles.fileURLs(pasteboard)
+        if urls.isEmpty {
+            guard acceptsPromises, DroppedFiles.hasPromises(pasteboard) else { return false }
+            DroppedFiles.receivePromises(pasteboard) { [weak self] result in
+                switch result {
+                case .success(let received): self?.onDrop?(received, false, true)
+                case .failure(let error): self?.onReceiveFailed?(error)
+                }
+            }
+            return true
+        }
+        let copy = Self.optionHeld || operation(sender) == .copy
         // Return to Finder first; the chooser opens after the drag session has ended.
-        DispatchQueue.main.async { [weak self] in self?.onDrop?(urls, copy) }
+        DispatchQueue.main.async { [weak self] in self?.onDrop?(urls, copy, false) }
         return true
     }
 }

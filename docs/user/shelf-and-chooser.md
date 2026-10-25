@@ -7,13 +7,13 @@ active app, and slides away shortly after another app becomes active (0.4 second
 It also shows over the bare desktop unless you turn that off.
 
 When you open Drop Sorter (at launch, from Spotlight, Finder or the Dock, or with **Show Shelf** in the
-menu-bar menu), the shelf is pinned: it shows even when Finder is not active, until you switch to another
-app than Finder. A pinned shelf says **pinned** next to its title, and ✕ hides it at once.
+menu-bar menu), the shelf shows even when Finder is not active, until you switch to another app than
+Finder. ✕ next to its title hides it at once.
 
 With several displays the shelf follows Finder: click a Finder window on another display and the shelf
 moves there within a second. Over the bare desktop it stays where it was.
 
-![The shelf, pinned: the big Drop to sort spot, three favorite spots and the Trash spot](images/shelf.png)
+![The shelf, pinned (filled pin at the top): the big Drop to sort spot, three favorite spots and the Trash spot](images/shelf.png)
 
 From top to bottom the shelf has:
 
@@ -23,11 +23,30 @@ From top to bottom the shelf has:
 - **The Trash spot** (can be turned off): moves the items to the Trash, with Undo.
 - **The gear**: Settings. A right-click anywhere on the shelf opens the menu.
 
-## The menu
+## Pin the shelf
+
+To drop from other apps than Finder (Apple Mail, Photos, a browser), pin the shelf: click the pin at
+the top of the shelf, or choose **Keep Shelf on Screen** in the menu. A pinned shelf shows a filled pin
+and stays on screen over every app until you click the pin again. Drop Sorter remembers it across
+restarts (`pinned` in the [configuration](configuration.md#shelf)).
+
+## Dropping from Mail and other apps
+
+Mail, Photos and some other apps do not hand over a file but promise one: the file is written only
+when you drop it. Drop Sorter takes such items (Mail attachments, and whole messages as `.eml` files)
+into a folder of its own, `Received` next to the configuration, and sorts them from there like any
+other file:
+
+- They are always moved out of `Received`, also with ⌥ or onto a favorite that copies. The original
+  stays in the app you dragged from. The cursor shows a green + because the app gives a copy.
+- Undo moves them back into `Received`. Emptied folders there are removed after a day.
+- The Trash spot does not take them.
+
 
 A right-click on the shelf and a click on the menu-bar icon open the same menu:
 
-- **Show Shelf** (menu-bar icon only): pins the shelf.
+- **Show Shelf** (menu-bar icon only): shows the shelf until you switch to another app than Finder.
+- **Keep Shelf on Screen**: pins the shelf, see [Pin the shelf](#pin-the-shelf).
 - **Undo Last Drop**: says what it would undo, see [Undo](#undo).
 - **Settings…**, **Open Configuration File**, **Drop Sorter Help**.
 - The version, and **Quit Drop Sorter**.
@@ -41,6 +60,7 @@ Dropping on the main spot opens the chooser. It shows the dropped items, a line 
 
 - Each folder that matches shows its score and the reasons below its name, for example
   “acme” ≈ parent (see [How suggestions work](suggestions.md)).
+- A very long path is cut off at the start; point at the folder to see the full path.
 - Folders with a rename rule show **rename**, and the line below the list previews the new names for
   the selected folder. Favorites show ★.
 - With ⌥ held while dropping, the chooser says **Copy** instead of **Sort**, and Return copies.

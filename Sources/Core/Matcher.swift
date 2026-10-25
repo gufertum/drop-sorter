@@ -98,7 +98,29 @@ enum Matcher {
         let top = ranked.first?.score ?? 0
         let second = ranked.dropFirst().first?.score ?? 0
         let clear = top >= rules.minScore && top - second >= rules.minMargin - 1e-9
+            && !conflicts(items, ranked, aliases: aliasTokens, rules: rules, history: history)
         return Suggestion(ranked: ranked, preselected: clear ? ranked.first?.path : nil)
+    }
+
+    /// True when a dropped name holds a word the best folder does not explain at all, while another
+    /// contender (score at least `minScore`) has that word in its name: "Globex invoice" must not go to
+    /// Acme/Invoices just because "invoice" was learned there.
+    private static func conflicts(_ items: [DropItem], _ ranked: [Candidate], aliases: [String: [String]],
+                                  rules: MatchRules, history: History) -> Bool {
+        guard let best = ranked.first else { return false }
+        let rivals = ranked.dropFirst().prefix { $0.score >= rules.minScore }.map(\.folder)
+        guard !rivals.isEmpty else { return false }
+        let f = best.folder
+        let named = { (t: String, words: [String]) in words.contains { $0 == t || Tokenizer.prefixMatch(t, $0) } }
+        for item in items {
+            let (base, ext) = Tokenizer.baseAndExtension(item.name, isDirectory: item.isDirectory)
+            for t in Tokenizer.tokens(base) {
+                let explained = named(t, f.leafTokens + f.parentTokens + (aliases[f.path] ?? []))
+                    || f.fileWords[t + "." + ext] != nil || history.count(t, f.path) > 0
+                if !explained && rivals.contains(where: { named(t, $0.leafTokens + $0.parentTokens) }) { return true }
+            }
+        }
+        return false
     }
 
     private static func score(_ item: DropItem, _ f: FolderEntry, aliases: [String], rules: MatchRules,

@@ -45,6 +45,7 @@ shelf:
   showOnDesktop: true
   hideDelayMs: 400
   trash: true
+  pinned: false
 menuBarIcon: true
 api:
   enabled: false
@@ -97,6 +98,7 @@ Folders never offered, with everything inside them.
 - `showOnDesktop` (true): also show the shelf when Finder has no window open.
 - `hideDelayMs` (400): delay before the shelf slides away.
 - `trash` (true): the Trash spot.
+- `pinned` (false): the shelf stays on screen over every app, see [Pin the shelf](shelf-and-chooser.md#pin-the-shelf).
 
 ### menuBarIcon
 

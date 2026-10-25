@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var apiStatus = "off"
     private let dropAppManager = DropAppManager()
     private var settings: SettingsWindow?
+    private var help: HelpWindow?
     /// Modification date of the config file last read, to pick up hand edits.
     private var configDate: Date?
     /// The folder scan, started when a drag enters the shelf so the chooser has the list at the drop.
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Mover.logPrefix = "DropSorter"
+        DroppedFiles.stagingRoot = supportDirectory.appendingPathComponent("Received", isDirectory: true)
         NSApp.mainMenu = buildMainMenu()
     }
 
@@ -64,6 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if over { self?.prefetchFolders() }
             self?.updateShelf()
         }
+        shelf.onPinToggle = { [weak self] in self?.setShelfPinned($0) }
+        shelf.onReceiveFailed = { [weak self] in self?.receiveFailed($0) }
         shelf.onClose = { [weak self] in
             self?.pinned = false
             self?.updateShelf(immediate: true)
@@ -105,6 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Brings shelf, favorites, menu-bar icon and an open Settings window in line with `config`.
     private func applyConfig() {
         visibility.showOnDesktop = config.shelf.showOnDesktop
+        visibility.keepPinned = config.shelf.pinned
+        shelf.setKeptPinned(config.shelf.pinned)
         visibility.ownBundleID = Bundle.main.bundleIdentifier ?? visibility.ownBundleID
         watcher.watchFinderWindows = !config.shelf.showOnDesktop
         let missing = Set(config.favorites.map(\.folder).filter {
@@ -115,12 +121,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if config.menuBarIcon && menuBar == nil {
             menuBar = MenuBarItem(menu: buildMenu(includeShowShelf: true))
             menuBar?.onDrop = { [weak self] urls, mode in self?.beginSort(urls, mode: mode) }
+            menuBar?.onReceiveFailed = { [weak self] in self?.receiveFailed($0) }
         } else if !config.menuBarIcon, let item = menuBar {
             item.remove()
             menuBar = nil
         }
         applyAPI()
         settings?.update(config: config, historyWords: historyWords)
+        if finishedLaunching { updateShelf() }
     }
 
     /// Starts, restarts (new port) or stops the REST API to match the config.
@@ -531,13 +539,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateShelf()
     }
 
-    /// The offline help: docs/user rendered to HTML by build.sh, opened in the default browser.
+    @objc private func togglePinned() { setShelfPinned(!config.shelf.pinned) }
+
+    /// The pin button and the menu: saves `shelf.pinned` like a change in Settings.
+    private func setShelfPinned(_ on: Bool) {
+        guard reloadConfigIfChanged() else { return }
+        var updated = config
+        updated.shelf.pinned = on
+        if let error = saveFromSettings(updated) {
+            showError("Pin not saved", [error], openConfig: true)
+        }
+    }
+
+    private func receiveFailed(_ error: Error) {
+        showError("Could not receive the dropped items", [error.localizedDescription, "Nothing was moved."], openConfig: false)
+    }
+
+    /// The offline help: docs/user rendered to HTML by build.sh, shown in the help window.
     @objc private func showHelp() {
-        guard let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Help") else {
+        guard let folder = Bundle.main.url(forResource: "Help", withExtension: nil),
+              FileManager.default.fileExists(atPath: folder.appendingPathComponent("index.html").path) else {
             showError("Help is missing", ["This build has no Contents/Resources/Help. Rebuild with build.sh."], openConfig: false)
             return
         }
-        NSWorkspace.shared.open(index)
+        if help == nil { help = HelpWindow(folder: folder) }
+        help?.show()
     }
 
     @objc private func openConfig() {
@@ -570,8 +596,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let m = NSMenu()
         if includeShowShelf {
             m.addItem(withTitle: "Show Shelf", action: #selector(pinShelf), keyEquivalent: "").target = self
-            m.addItem(.separator())
         }
+        m.addItem(withTitle: "Keep Shelf on Screen", action: #selector(togglePinned), keyEquivalent: "").target = self
+        m.addItem(.separator())
         m.addItem(withTitle: "Undo Last Drop", action: #selector(undoLastDrop), keyEquivalent: "").target = self
         m.addItem(.separator())
         m.addItem(withTitle: "Settings…", action: #selector(showSettings as () -> Void), keyEquivalent: "").target = self
@@ -594,6 +621,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let windowItem = NSMenuItem()
         windowItem.submenu = NSMenu(title: "Window")
         windowItem.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // Help window: through the responder chain, so only active there.
+        windowItem.submenu?.addItem(withTitle: "Back", action: #selector(HelpWindow.goBack(_:)), keyEquivalent: "[")
+        windowItem.submenu?.addItem(withTitle: "Forward", action: #selector(HelpWindow.goForward(_:)), keyEquivalent: "]")
         main.addItem(windowItem)
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
@@ -616,7 +646,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSMenuItemValidation {
     /// "Undo Last Drop" says what it would undo, and is disabled when there is nothing.
+    /// "Keep Shelf on Screen" shows a check mark while the shelf is pinned.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(togglePinned) {
+            item.state = config.shelf.pinned ? .on : .off
+            return true
+        }
         guard item.action == #selector(undoLastDrop) else { return true }
         if let last = try? service.lastOperation() {
             item.title = "Undo Last Drop: \(last.mode.pastTense) \(last.moves.count) to \(last.display ?? last.folder)"

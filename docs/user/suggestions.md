@@ -27,6 +27,10 @@ numbers are ignored, but years count. Then each word is compared with each folde
 With several items the scores are averaged. A folder is preselected when it scores at least 3 and leads
 the next one by at least 1 (both can be changed, see [Configuration](configuration.md#suggest)).
 
+A word in the name that the best folder does not explain also stops the preselection when another
+folder with a score of 3 or more has that word in its name: `Globex invoice.pdf` is not preselected for
+`Acme/Invoices`, even when invoices went there before.
+
 ## Learning
 
 Every move teaches Drop Sorter: the words of the moved names count for the folder next time. Settings ›

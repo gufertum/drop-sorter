@@ -3,8 +3,12 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
-## [Unreleased]
+## [1.2.0] - 2026-10-25
 
+- #35 Help in a window of its own instead of the browser
+- #34 Bigger chooser (900 × 560, fitted to small screens) for long paths; full path as tooltip
+- #33 Pin the shelf over every app; drops from Mail and other apps that promise files
+- #40 No preselection when a word of the name points to another strong folder (Globex invoice no longer goes to Acme/Invoices)
 - #39 README: intro, demo movie, screenshots, quick install; `scripts/make-demo-home.sh` for recording
 
 ## [1.1.0] - 2026-10-25

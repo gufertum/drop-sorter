@@ -44,6 +44,14 @@ let tallWithTrash = five.frame.height
 five.setTrash(false)
 check(five.trashSpot.isHidden && five.frame.height < tallWithTrash, "trash spot hidden, shelf shorter")
 
+// File promises (Mail): the main spot and favorites take them, the Trash spot does not.
+let promiseTypes = Set(NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) })
+check(!promiseTypes.isEmpty, "promise types known")
+for spot in five.favoriteSpotViews {
+    check(promiseTypes.isSubset(of: Set(spot.registeredDraggedTypes)), "favorite spot takes file promises")
+}
+check(Set(five.trashSpot.registeredDraggedTypes).isDisjoint(with: promiseTypes), "trash spot refuses file promises")
+
 // Settings: in every tab, all table columns fit into the visible width (nothing cut off on the right)
 // and the panes use the full width of the window.
 var cfg = SorterConfig()
@@ -96,5 +104,15 @@ filterField(typed.contentView!)?.stringValue = "reci"
 typed.show(ChooserModel(items: dropped, suggestion: suggestion))
 returnKey(typed)
 check(chosen == ["40 Resources/Recipes"], "typed filter kept when the list arrives: \(chosen)")
+
+// Long paths need room: the chooser is at least 900 pt wide before present() fits it to the screen.
+check(typed.frame.width >= 900 && typed.frame.height >= 560, "chooser size: \(typed.frame.size)")
+// Help window: pages, images and anchors inside the help folder stay in the window; the rest goes out.
+let helpFolder = URL(fileURLWithPath: "/Applications/Drop Sorter.app/Contents/Resources/Help")
+check(HelpWindow.isInside(helpFolder.appendingPathComponent("settings.html"), folder: helpFolder), "help page inside")
+check(HelpWindow.isInside(URL(string: "file:///Applications/Drop%20Sorter.app/Contents/Resources/Help/images/shelf.png")!, folder: helpFolder), "help image inside")
+check(!HelpWindow.isInside(URL(fileURLWithPath: "/Applications/Drop Sorter.app/Contents/Resources/Help2/x.html"), folder: helpFolder), "sibling folder outside")
+check(!HelpWindow.isInside(helpFolder.appendingPathComponent("../config.json"), folder: helpFolder), "parent outside")
+check(!HelpWindow.isInside(URL(string: "https://example.com/")!, folder: helpFolder), "web link outside")
 
 if failures == 0 { print("All UI checks passed.") } else { print("\(failures) UI failure(s)"); exit(1) }

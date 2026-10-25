@@ -39,6 +39,8 @@ struct SorterConfig: Codable, Equatable {
         var hideDelayMs = 400
         /// A Trash spot at the bottom of the shelf.
         var trash = true
+        /// Pinned: the shelf stays on screen over every app (to drop from Mail and others), not only with Finder.
+        var pinned = false
     }
 
     /// Folders that take drops; each with all its subfolders unless `subfolders: false`.
@@ -335,5 +337,6 @@ extension SorterConfig.Shelf {
         showOnDesktop = try c.decodeIfPresent(Bool.self, forKey: .showOnDesktop) ?? true
         hideDelayMs = try c.decodeIfPresent(Int.self, forKey: .hideDelayMs) ?? 400
         trash = try c.decodeIfPresent(Bool.self, forKey: .trash) ?? true
+        pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
     }
 }

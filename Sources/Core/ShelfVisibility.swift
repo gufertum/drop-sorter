@@ -15,6 +15,8 @@ struct ShelfVisibility {
 
     var showOnDesktop = true
     var ownBundleID = "li.sudo.dropsorter"
+    /// `shelf.pinned`: shown over every app until the user unpins it.
+    var keepPinned = false
 
     /// - Parameters:
     ///   - frontmost: bundle id of the active app.
@@ -22,7 +24,7 @@ struct ShelfVisibility {
     ///   - pinned: just launched (or launched again, or Show Shelf); see `releasesPin`.
     ///   - busy: chooser open or a drag over the shelf.
     func decide(frontmost: String?, finderHasWindows: Bool, pinned: Bool, busy: Bool) -> Decision {
-        if pinned || busy { return .show }
+        if keepPinned || pinned || busy { return .show }
         if frontmost == ownBundleID { return .keep }
         if frontmost == Self.finderBundleID && (finderHasWindows || showOnDesktop) { return .show }
         return .hideLater

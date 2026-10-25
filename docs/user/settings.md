@@ -35,6 +35,8 @@ where. A change that cannot be saved is refused with the reason in red above tha
 
 **Shelf**:
 
+- **Pin it**: the shelf stays on screen over every app, see
+  [Pin the shelf](shelf-and-chooser.md#pin-the-shelf). Same as the pin button on the shelf.
 - **Also show it on the bare desktop**: off, the shelf shows only while a Finder window is open.
 - **Hide it … ms after another app becomes active**: the delay before the shelf slides away
   (default 400).
