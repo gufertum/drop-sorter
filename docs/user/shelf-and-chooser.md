@@ -60,6 +60,7 @@ Dropping on the main spot opens the chooser. It shows the dropped items, a line 
 
 - Each folder that matches shows its score and the reasons below its name, for example
   “acme” ≈ parent (see [How suggestions work](suggestions.md)).
+- A very long path is cut off at the start; point at the folder to see the full path.
 - Folders with a rename rule show **rename**, and the line below the list previews the new names for
   the selected folder. Favorites show ★.
 - With ⌥ held while dropping, the chooser says **Copy** instead of **Sort**, and Return copies.
