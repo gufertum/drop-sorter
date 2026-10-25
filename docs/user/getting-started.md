@@ -63,5 +63,7 @@ Esc, or a click outside the chooser, leaves the file where it was.
 - **Help**: Drop Sorter Help in the same menus, or ⌘? while Settings is open.
 - **Bring the shelf back**: open Drop Sorter again (Spotlight, Finder, Dock) or choose **Show Shelf**
   in the menu-bar icon's menu.
+- **Drop from Mail and other apps**: pin the shelf with the pin at its top, see
+  [Pin the shelf](shelf-and-chooser.md#pin-the-shelf).
 
 Next: [The shelf and the chooser](shelf-and-chooser.md).

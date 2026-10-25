@@ -44,6 +44,14 @@ let tallWithTrash = five.frame.height
 five.setTrash(false)
 check(five.trashSpot.isHidden && five.frame.height < tallWithTrash, "trash spot hidden, shelf shorter")
 
+// File promises (Mail): the main spot and favorites take them, the Trash spot does not.
+let promiseTypes = Set(NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) })
+check(!promiseTypes.isEmpty, "promise types known")
+for spot in five.favoriteSpotViews {
+    check(promiseTypes.isSubset(of: Set(spot.registeredDraggedTypes)), "favorite spot takes file promises")
+}
+check(Set(five.trashSpot.registeredDraggedTypes).isDisjoint(with: promiseTypes), "trash spot refuses file promises")
+
 // Settings: in every tab, all table columns fit into the visible width (nothing cut off on the right)
 // and the panes use the full width of the window.
 var cfg = SorterConfig()

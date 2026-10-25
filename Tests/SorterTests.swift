@@ -16,6 +16,16 @@ func shelfVisibilityTests() {
     eq(desktopOff.decide(frontmost: finder, finderHasWindows: false, pinned: false, busy: false), .hideLater)
     eq(desktopOff.decide(frontmost: finder, finderHasWindows: true, pinned: false, busy: false), .show)
 
+    // shelf.pinned: shown over any app, also without Finder windows.
+    var kept = desktopOff
+    kept.keepPinned = true
+    eq(kept.decide(frontmost: "com.apple.mail", finderHasWindows: false, pinned: false, busy: false), .show)
+    eq(kept.decide(frontmost: nil, finderHasWindows: false, pinned: false, busy: false), .show)
+    let decoded = try? JSONDecoder().decode(SorterConfig.self, from: Data(#"{"shelf":{"pinned":true}}"#.utf8))
+    eq(decoded?.shelf.pinned, true)
+    eq(decoded?.shelf.trash, true)
+    eq(SorterConfig().shelf.pinned, false)
+
     // The launch pin ends when another app gets the focus, not for Finder or Drop Sorter itself.
     check(v.releasesPin(activated: "com.apple.Safari"), "another app releases the pin")
     check(!v.releasesPin(activated: finder), "Finder keeps the pin")
