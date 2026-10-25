@@ -2,3 +2,5 @@ build/
 .DS_Store
 SECRETS.md
 .idea/
+/DropSorter-*.zip
+/DropSorter-*.zip.sha256
