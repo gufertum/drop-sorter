@@ -7,6 +7,7 @@ enum SorterConfigError: LocalizedError, Equatable {
     case notAnAppPath(String)
     case invalidPort(Int)
     case alsoCopyToSelf(String)
+    case invalidShortcut(String, String)
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +17,7 @@ enum SorterConfigError: LocalizedError, Equatable {
         case .alsoCopyToSelf(let f): return "Favorite '\(f)': alsoCopyTo must be another folder."
         case .invalidPort(let p): return "api.port \(p) must be between 1024 and 65535."
         case .notAnAppPath(let p): return "dropApps: '\(p)' must be an absolute path (or start with ~/) ending in .app."
+        case .invalidShortcut(let s, let why): return "jumpShortcut '\(s)': \(why)."
         }
     }
 }
@@ -64,12 +66,15 @@ struct SorterConfig: Codable, Equatable {
     var api = API()
     /// Drop Mover apps managed in Settings, absolute paths (`~` allowed).
     var dropApps: [String] = []
+    /// Global shortcut for Jump to Folder (see `Shortcut`); empty turns it off.
+    var jumpShortcut = Self.defaultJumpShortcut
+    static let defaultJumpShortcut = "ctrl+opt+cmd+j"
 
     init() {}
 
     /// Written keys; `base` and `archive` of older files are read through LegacyKeys only.
     enum CodingKeys: String, CodingKey {
-        case targets, renameRules, favorites, exclude, aliases, extensionRules, suggest, shelf, menuBarIcon, api, dropApps
+        case targets, renameRules, favorites, exclude, aliases, extensionRules, suggest, shelf, menuBarIcon, api, dropApps, jumpShortcut
     }
 
     init(from decoder: Decoder) throws {
@@ -91,6 +96,7 @@ struct SorterConfig: Codable, Equatable {
         menuBarIcon = try c.decodeIfPresent(Bool.self, forKey: .menuBarIcon) ?? true
         dropApps = try c.decodeIfPresent([String].self, forKey: .dropApps) ?? []
         api = try c.decodeIfPresent(API.self, forKey: .api) ?? API()
+        jumpShortcut = try c.decodeIfPresent(String.self, forKey: .jumpShortcut) ?? Self.defaultJumpShortcut
         if let base = legacyBase { adoptLegacyBase(base) }
     }
 
@@ -150,6 +156,8 @@ struct SorterConfig: Codable, Equatable {
         if suggest.minMargin < 0 { throw SorterConfigError.negative("suggest.minMargin") }
         if shelf.hideDelayMs < 0 { throw SorterConfigError.negative("shelf.hideDelayMs") }
         if !(1024...65535).contains(api.port) { throw SorterConfigError.invalidPort(api.port) }
+        do { _ = try Shortcut.parse(jumpShortcut) }
+        catch { throw SorterConfigError.invalidShortcut(jumpShortcut, error.localizedDescription) }
     }
 
     /// The rule that applies to `folder` (a full path): its own rule, else the closest parent rule that

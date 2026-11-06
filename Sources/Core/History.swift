@@ -11,6 +11,13 @@ struct History: Codable, Equatable {
 
     func count(_ token: String, _ folder: String) -> Int { counts[token]?[folder] ?? 0 }
 
+    /// Folder -> learned words in total: how much has been sorted there (Jump to Folder orders by it).
+    var usePerFolder: [String: Int] {
+        var uses: [String: Int] = [:]
+        for folders in counts.values { for (f, c) in folders { uses[f, default: 0] += c } }
+        return uses
+    }
+
     /// Records that items named with `tokens` were moved to `folder`, then trims the table to its limits.
     mutating func record(tokens: [String], folder: String) {
         for t in tokens {

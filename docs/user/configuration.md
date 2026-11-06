@@ -47,6 +47,7 @@ shelf:
   trash: true
   pinned: false
 menuBarIcon: true
+jumpShortcut: ctrl+opt+cmd+j
 api:
   enabled: false
   port: 47800
@@ -103,6 +104,14 @@ Folders never offered, with everything inside them.
 ### menuBarIcon
 
 `true` (default) shows the menu-bar icon.
+
+### jumpShortcut
+
+The global shortcut for [Jump to Folder](shelf-and-chooser.md#jump-to-a-folder), default
+`ctrl+opt+cmd+j` (⌃⌥⌘J). Modifiers `ctrl`, `opt`, `shift`, `cmd` and one key (`a`-`z`, `0`-`9`,
+`space`, `f1`-`f12`), joined by `+`. At least one of `ctrl`, `opt` or `cmd` is needed, except for
+`f1`-`f12`. An empty value (`jumpShortcut: ""`) turns the shortcut off. If another app already uses
+the shortcut, Drop Sorter says so; the menu item and the double-click still work.
 
 ### api
 

@@ -2,11 +2,13 @@ import AppKit
 
 /// Filter field and ranked folder list. Return moves into the selected folder, Esc (or clicking
 /// elsewhere) closes without touching the files. Tab steps into the selected folder.
+/// With `jump` there are no files: Return hands back the folder to open in Finder.
 final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     /// Called once: the chosen folder path, or nil when the user left.
     var onFinish: ((String?) -> Void)?
     private var model: ChooserModel
     private let mode: TransferMode
+    private let jump: Bool
     private let renamePattern: (String) -> String?
     private let field = NSTextField()
     private let table = NSTableView()
@@ -17,11 +19,14 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     private var scanning: Bool
 
     /// Without `model` the chooser opens at once and shows "Scanning…" until `show(_:)` hands it the folders.
-    init(items: [DropItem], model: ChooserModel? = nil, mode: TransferMode = .move, renamePattern: @escaping (String) -> String?) {
+    init(items: [DropItem], model: ChooserModel? = nil, mode: TransferMode = .move, jump: Bool = false,
+         renamePattern: @escaping (String) -> String?) {
         self.model = model ?? ChooserModel(items: items, suggestion: Suggestion(ranked: [], preselected: nil))
         scanning = model == nil
         self.mode = mode
-        self.renamePattern = renamePattern
+        self.jump = jump
+        // Nothing is renamed when nothing moves.
+        self.renamePattern = jump ? { _ in nil } : renamePattern
         super.init(contentRect: NSRect(origin: .zero, size: Self.size),
                    styleMask: [.borderless], backing: .buffered, defer: false)
         level = .floating
@@ -74,7 +79,8 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
 
         let names = model.items.map { $0.isDirectory ? $0.name + "/" : $0.name }
         let verb = mode == .copy ? "Copy" : "Sort"
-        let what = NSTextField(labelWithString: "\(verb) \(names.count) item\(names.count == 1 ? "" : "s"): " + names.joined(separator: ", "))
+        let what = NSTextField(labelWithString: jump ? "Jump to a folder: it opens in Finder"
+            : "\(verb) \(names.count) item\(names.count == 1 ? "" : "s"): " + names.joined(separator: ", "))
         what.font = .systemFont(ofSize: 12, weight: .semibold)
         what.lineBreakMode = .byTruncatingTail
         what.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -113,7 +119,8 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
         rename.lineBreakMode = .byTruncatingMiddle
         rename.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let help = NSTextField(labelWithString: "↵ \(mode == .copy ? "copy" : "move")   ⇥ into folder   ↑↓ select   esc leave the files where they are")
+        let help = NSTextField(labelWithString: jump ? "↵ open in Finder   ⇥ into folder   ↑↓ select   esc close"
+            : "↵ \(mode == .copy ? "copy" : "move")   ⇥ into folder   ↑↓ select   esc leave the files where they are")
         help.font = .systemFont(ofSize: 10)
         help.textColor = .tertiaryLabelColor
 
@@ -150,6 +157,9 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
             verdict.textColor = .systemOrange
         } else if scanning {
             verdict.stringValue = "Scanning the target folders…"
+            verdict.textColor = .secondaryLabelColor
+        } else if jump {
+            verdict.stringValue = "Favorites first, then the folders you sort into most. Type to find a folder."
             verdict.textColor = .secondaryLabelColor
         } else if let p = model.suggestion.preselected {
             verdict.stringValue = "Clear match: \(ranked.first { $0.path == p }?.folder.display ?? p)"
@@ -255,7 +265,7 @@ final class ChooserPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, N
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let c = model.visible[row]
         let cell = tableView.makeView(withIdentifier: FolderCell.id, owner: nil) as? FolderCell ?? FolderCell()
-        cell.show(c, favorite: model.favorites.contains(c.path), renames: renamePattern(c.path) != nil)
+        cell.show(c, favorite: model.favorites.contains(c.path), renames: renamePattern(c.path) != nil, showScore: !jump)
         return cell
     }
 
@@ -307,7 +317,8 @@ final class FolderCell: NSTableCellView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func show(_ c: Candidate, favorite: Bool, renames: Bool) {
+    /// `showScore` false: the order is not a match score (Jump to Folder), so no number is shown.
+    func show(_ c: Candidate, favorite: Bool, renames: Bool, showScore: Bool = true) {
         let shown = c.folder.display
         let cut = shown.range(of: "/", options: .backwards).map { shown.distance(from: shown.startIndex, to: $0.upperBound) } ?? 0
         let s = NSMutableAttributedString(string: String(shown.prefix(cut)),
@@ -319,7 +330,7 @@ final class FolderCell: NSTableCellView {
         toolTip = c.path
         detail.stringValue = c.score > 0 ? c.reasons.joined(separator: " · ") : ""
         detail.isHidden = detail.stringValue.isEmpty
-        badges.stringValue = [favorite ? "★" : nil, renames ? "rename" : nil, c.score > 0 ? String(format: "%.1f", c.score) : nil]
+        badges.stringValue = [favorite ? "★" : nil, renames ? "rename" : nil, showScore && c.score > 0 ? String(format: "%.1f", c.score) : nil]
             .compactMap { $0 }.joined(separator: "  ")
     }
 }
