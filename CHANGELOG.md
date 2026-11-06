@@ -3,7 +3,7 @@
 Versions follow [semver](https://semver.org). The version lives in `VERSION`; each release is tagged
 `vX.Y.Z` on `main` (`scripts/tag-release.sh`). Numbers are Forgejo issues.
 
-## [Unreleased]
+## [1.3.0] - 2026-11-06
 
 - #41 Jump to Folder: the chooser opens a folder in Finder (menu, ⌃⌥⌘J, double-click on the shelf); `jumpShortcut` setting
 
