@@ -14,6 +14,8 @@ final class ShelfPanel: NSPanel {
     var onDrop: (([URL], TransferMode) -> Void)?
     /// A drop on a favorite spot: favorite, items, mode (⌥ or the favorite's own setting). No chooser.
     var onDropFavorite: ((Favorite, [URL], TransferMode) -> Void)?
+    /// Double-click on the main spot: Jump to Folder.
+    var onDoubleClick: (() -> Void)?
     /// A drop on the Trash spot.
     var onDropTrash: (([URL]) -> Void)?
     let trashSpot = DropSpot(symbol: "trash", title: "Trash", compact: true, color: .systemGray)
@@ -86,6 +88,8 @@ final class ShelfPanel: NSPanel {
 
         spot.onDrop = { [weak self] urls, copy, _ in self?.onDrop?(urls, copy ? .copy : .move) }
         spot.onHover = { [weak self] in self?.onDragOver?($0) }
+        spot.onDoubleClick = { [weak self] in self?.onDoubleClick?() }
+        spot.toolTip = "Drop files to sort them. Double-click to jump to a folder in Finder."
         spot.onReceiveFailed = { [weak self] in self?.onReceiveFailed?($0) }
 
         favoriteStack.orientation = .vertical
@@ -283,6 +287,8 @@ final class DropSpot: NSView {
     var onDrop: (([URL], Bool, Bool) -> Void)?
     var onHover: ((Bool) -> Void)?
     var onReceiveFailed: ((Error) -> Void)?
+    /// Double-click on the spot; only the main spot sets it.
+    var onDoubleClick: (() -> Void)?
     /// File promises (Mail attachments and messages, ...) besides file URLs; off for the Trash spot.
     var acceptsPromises = true {
         didSet {
@@ -342,6 +348,13 @@ final class DropSpot: NSView {
         ])
     }
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// The shelf never becomes key; the first click must still count.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { onDoubleClick != nil }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, let onDoubleClick { onDoubleClick() } else { super.mouseDown(with: event) }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         let radius: CGFloat = compact ? 7 : 10

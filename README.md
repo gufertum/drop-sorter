@@ -290,6 +290,7 @@ shelf:
   trash: true        # Trash spot at the bottom of the shelf
   pinned: false      # true: shelf stays on screen over every app
 menuBarIcon: true    # default; false hides the icon
+jumpShortcut: ctrl+opt+cmd+j   # Jump to Folder; "" turns it off
 api:                 # REST API, Settings › Advanced › API
   enabled: false
   port: 47800
