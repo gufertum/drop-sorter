@@ -102,6 +102,24 @@ enum Matcher {
         return Suggestion(ranked: ranked, preselected: clear ? ranked.first?.path : nil)
     }
 
+    /// The chooser without dropped items (Jump to Folder): no name to score, so favorites come first, then
+    /// the folders by use (`History.usePerFolder`), then the rest by path. Favorites outside `folders` are added.
+    /// Scores stay below 1, so with a filter the filter quality (steps of 10, see `rank`) still decides.
+    /// Nothing is preselected.
+    static func browse(folders: [FolderEntry], favorites: [String], history: History) -> Suggestion {
+        let known = Set(folders.map(\.path))
+        let extra = favorites.filter { !known.contains($0) }
+            .map { FolderEntry(path: $0, display: SorterConfig.abbreviate($0)) }
+        let uses = history.usePerFolder
+        let most = Double(max(uses.values.max() ?? 0, 1))
+        let favs = Set(favorites)
+        let ranked = (folders + extra).map { f -> Candidate in
+            let used = Double(uses[f.path] ?? 0) / most * 0.49
+            return Candidate(folder: f, score: (favs.contains(f.path) ? 0.5 : 0) + used, reasons: [])
+        }.sorted { $0.score != $1.score ? $0.score > $1.score : $0.path < $1.path }
+        return Suggestion(ranked: ranked, preselected: nil)
+    }
+
     /// True when a dropped name holds a word the best folder does not explain at all, while another
     /// contender (score at least `minScore`) has that word in its name: "Globex invoice" must not go to
     /// Acme/Invoices just because "invoice" was learned there.

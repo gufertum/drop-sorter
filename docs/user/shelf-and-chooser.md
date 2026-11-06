@@ -45,6 +45,7 @@ other file:
 
 A right-click on the shelf and a click on the menu-bar icon open the same menu:
 
+- **Jump to Folder…**: opens a folder in Finder, see [Jump to a folder](#jump-to-a-folder).
 - **Show Shelf** (menu-bar icon only): shows the shelf until you switch to another app than Finder.
 - **Keep Shelf on Screen**: pins the shelf, see [Pin the shelf](#pin-the-shelf).
 - **Undo Last Drop**: says what it would undo, see [Undo](#undo).
@@ -81,6 +82,19 @@ With many folders the chooser may open with "Scanning the target folders…" for
 already type; the list fills in when the scan is done, and Return waits for it. Drop Sorter starts the
 scan as soon as you drag over the shelf, so usually the list is there when you drop. After Return the
 chooser closes at once; the move runs in the background and the message follows when it is done.
+
+## Jump to a folder
+
+The chooser also takes you to a folder: it opens in Finder instead of getting files. Open it with
+
+- **Jump to Folder…** in the shelf menu or the menu-bar menu,
+- the shortcut ⌃⌥⌘J, from any app (change or turn it off with `jumpShortcut` in the [configuration](configuration.md#jumpshortcut)),
+- a double-click on the **Drop to sort** spot.
+
+Without dropped items there is no suggestion: favorites come first, then the folders you have sorted
+into most, then the rest by path. Favorites outside your target folders are in the list too. Typing,
+↑ ↓ and ⇥ work as above; Return or a double-click opens the folder in a Finder window, Esc closes the
+chooser. Nothing is moved, and the history does not change.
 
 ## Favorites
 

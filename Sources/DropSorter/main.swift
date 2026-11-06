@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingOpen: [URL] = []
     private var finishedLaunching = false
     private var menuBar: MenuBarItem?
+    /// The global Jump to Folder shortcut, and the config text it was registered for.
+    private var hotKey: HotKey?
+    private var hotKeyText: String?
     private var apiServer: HTTPServer?
     /// "off", "listening on 127.0.0.1:47800", or the failure; shown in Settings.
     private(set) var apiStatus = "off"
@@ -60,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.sortIntoFavorite(urls, fav.folder, mode: mode, alsoCopyTo: fav.alsoCopyTo)
         }
         shelf.onSettings = { [weak self] in self?.showSettings() }
+        shelf.onDoubleClick = { [weak self] in self?.jumpToFolder() }
         shelf.onDropTrash = { [weak self] urls in self?.trash(urls) }
         shelf.onDragOver = { [weak self] over in
             self?.dragOver = over
@@ -127,8 +131,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuBar = nil
         }
         applyAPI()
+        applyHotKey()
         settings?.update(config: config, historyWords: historyWords)
         if finishedLaunching { updateShelf() }
+    }
+
+    /// Registers the Jump to Folder shortcut again when `jumpShortcut` changed. A shortcut another app holds
+    /// is reported once per change; the menu item and the double-click still work.
+    private func applyHotKey() {
+        guard config.jumpShortcut != hotKeyText else { return }
+        hotKeyText = config.jumpShortcut
+        hotKey = nil
+        // validate() has checked the text; empty means off.
+        guard let shortcut = try? Shortcut.parse(config.jumpShortcut) else { return }
+        do {
+            hotKey = try HotKey(shortcut) { [weak self] in self?.jumpToFolder() }
+        } catch {
+            showError("Shortcut \(shortcut.display) not available", [error.localizedDescription,
+                      "Set another jumpShortcut in the configuration file."], openConfig: true)
+        }
     }
 
     /// Starts, restarts (new port) or stops the REST API to match the config.
@@ -252,6 +273,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         panel.present()
 
+        fillChooser(panel) { folders, history in
+            scanned = folders
+            let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
+            return ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoriteIDs))
+        }
+    }
+
+    /// Hands an open chooser its folders when the scan is done; on a failed scan or history it closes the
+    /// chooser and says why.
+    private func fillChooser(_ panel: ChooserPanel, model: @escaping ([FolderEntry], History) -> ChooserModel) {
         scanFolders { [weak self, weak panel] outcome in
             guard let self, let panel, self.chooser === panel else { return }
             let folders: [FolderEntry]
@@ -266,10 +297,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showError("Cannot read the history", [error.localizedDescription], openConfig: false)
                 return
             }
-            scanned = folders
-            let suggestion = Matcher.suggest(items, folders: folders, rules: config.matchRules, history: history)
-            panel.show(ChooserModel(items: items, suggestion: suggestion, favorites: Set(config.favoriteIDs)))
+            panel.show(model(folders, history))
         }
+    }
+
+    // MARK: Jump to Folder
+
+    /// The chooser without files: Return opens the folder in Finder. Menu, shortcut, double-click on the shelf.
+    @objc private func jumpToFolder() {
+        guard chooser == nil, reloadConfigIfChanged() else { return }
+        guard !config.targets.isEmpty else { return askForTargets(then: []) }
+        let front = NSWorkspace.shared.frontmostApplication
+        previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
+        let favorites = config.favoriteIDs
+        let panel = ChooserPanel(items: [], jump: true) { _ in nil }
+        panel.onFinish = { [weak self] path in self?.finishJump(path) }
+        chooser = panel
+        updateShelf()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.present()
+        fillChooser(panel) { folders, history in
+            ChooserModel(items: [], suggestion: Matcher.browse(folders: folders, favorites: favorites, history: history),
+                         favorites: Set(favorites))
+        }
+    }
+
+    private func finishJump(_ path: String?) {
+        chooser = nil
+        defer { updateShelf() }
+        let previous = previousApp
+        previousApp = nil
+        // Esc: back to where the user was.
+        guard let path else { previous?.activate(options: []); return }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue,
+              NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path) else {
+            previous?.activate(options: [])
+            showError("Cannot open the folder", [path], openConfig: false)
+            return
+        }
+        NSLog("DropSorter: jumped to %@", path)
     }
 
     /// Starts the folder scan in the background (drag over the shelf), so it is done or nearly done at the drop.
@@ -594,6 +661,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Right-click menu of the shelf, and the menu of the menu-bar icon.
     private func buildMenu(includeShowShelf: Bool) -> NSMenu {
         let m = NSMenu()
+        m.addItem(withTitle: "Jump to Folder…", action: #selector(jumpToFolder), keyEquivalent: "").target = self
+        m.addItem(.separator())
         if includeShowShelf {
             m.addItem(withTitle: "Show Shelf", action: #selector(pinShelf), keyEquivalent: "").target = self
         }
@@ -648,6 +717,14 @@ extension AppDelegate: NSMenuItemValidation {
     /// "Undo Last Drop" says what it would undo, and is disabled when there is nothing.
     /// "Keep Shelf on Screen" shows a check mark while the shelf is pinned.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(jumpToFolder) {
+            // Shows the global shortcut; F-keys and an empty setting show none.
+            let shortcut = (try? Shortcut.parse(config.jumpShortcut)) ?? nil
+            let key = shortcut.map { $0.key == "space" ? " " : $0.key } ?? ""
+            item.keyEquivalent = key.count == 1 ? key : ""
+            item.keyEquivalentModifierMask = shortcut.map { HotKey.menuModifiers($0.modifiers) } ?? []
+            return chooser == nil
+        }
         if item.action == #selector(togglePinned) {
             item.state = config.shelf.pinned ? .on : .off
             return true

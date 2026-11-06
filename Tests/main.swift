@@ -22,6 +22,7 @@ let suites: [(String, () throws -> Void)] = [
     ("ShelfScreen", shelfScreenTests),
     ("ShelfLabels", shelfLabelTests),
     ("ChooserModel", chooserModelTests),
+    ("Jump", jumpTests),
     ("Sorter", sorterTests),
     ("Identical", identicalTests),
     ("IdenticalService", identicalServiceTests),
